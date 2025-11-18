@@ -1,34 +1,89 @@
-import React, { useState } from "react";
+import React, { useEffect } from "react";
 import Modal from "react-modal";
+import { useSelector, useDispatch } from "react-redux";
+import Swal from "sweetalert2";
+
+import {
+  setStep,
+  setAdType,
+  setTypeOfAds,
+  resetAdPost,
+} from "../../features/redux/adPostSlice";
+
 import Choose from "./choose";
 import POSTANADS from "./POSTANADS";
-import PostanNeed from "./POSTanNeed";
-import POSTanOffer from "./POSTanOffer";
+import PaymentForAds from "./_PaymentForAds";
+import _VerificationForAds from "./_VerificationForAds";
 
 const PostAdsModal = ({ isOpen, onClose }) => {
-  const [step, setStep] = useState("choose");
-  const [adType, setAdType] = useState("");
+  const dispatch = useDispatch();
+  const { step, formData } = useSelector((state) => state.adPost);
 
+  // 🔹 Handle refresh warning and reset
+  useEffect(() => {
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+      sessionStorage.setItem("clearAdPost", "true");
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    // Clear if reloaded
+    if (sessionStorage.getItem("clearAdPost") === "true") {
+      dispatch(resetAdPost());
+      sessionStorage.removeItem("clearAdPost");
+    }
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [dispatch]);
+
+  // 🔹 Choose Type handler - FIXED
   const handleChoose = (type) => {
-    setAdType(type);
-    setStep("form");
+    // 🔥 FIX: Map user selection directly to correct typeofads value
+    let typeOfAds;
+    
+    if (type === "Ads") {
+      typeOfAds = "Advertisement";
+    } else if (type === "Need") {
+      typeOfAds = "Needs";
+    } else if (type === "Offer") {
+      typeOfAds = "Offers";
+    }
+
+    console.log("📌 User selected:", type);
+    console.log("📌 Setting typeofads to:", typeOfAds);
+
+    // Set both adType (for UI) and typeofads (for backend)
+    dispatch(setAdType(type));          // UI display type (Ads, Need, Offer)
+    dispatch(setTypeOfAds(typeOfAds));  // Backend value (Advertisement, Needs, Offers)
+    dispatch(setStep("form"));
   };
 
+  // 🔹 Step Handlers
   const handleNext = () => {
-    if (step === "form") setStep("payment");
-    else if (step === "payment") setStep("success");
+    if (step === "form") dispatch(setStep("payment"));
+    else if (step === "payment") dispatch(setStep("verification"));
+    else if (step === "verification") dispatch(setStep("success"));
   };
 
   const handleBack = () => {
-    if (step === "payment") setStep("form");
-    else if (step === "form") setStep("choose");
+    if (step === "verification") dispatch(setStep("payment"));
+    else if (step === "payment") dispatch(setStep("form"));
+    else if (step === "form") dispatch(setStep("choose"));
   };
 
   const handleClose = () => {
-    setStep("choose");
-    setAdType("");
+    dispatch(resetAdPost());
     onClose();
   };
+
+  // 🔥 Debug: Log current typeofads value
+  useEffect(() => {
+    console.log("Current formData.typeofads:", formData.typeofads);
+  }, [formData.typeofads]);
 
   return (
     <Modal
@@ -36,42 +91,41 @@ const PostAdsModal = ({ isOpen, onClose }) => {
       onRequestClose={handleClose}
       ariaHideApp={false}
       shouldCloseOnOverlayClick={true}
-      className="fixed inset-0 bg-white z-[9999] overflow-auto p-6"
+      className="fixed inset-0 bg-white z-[9999] overflow-auto font-playfair font-bold"
       overlayClassName="fixed inset-0 bg-black bg-opacity-50 z-[9998]"
     >
+      {/* Step 0 - Choose Ad Type */}
       {step === "choose" && (
         <Choose handleChoose={handleChoose} handleClose={handleClose} />
       )}
 
+      {/* Step 1 - Single Unified Form */}
       {step === "form" && (
-        <>
-          {adType === "Ads" && <POSTANADS onBack={handleBack} onNext={handleNext} />}
-          {adType === "Need" && <PostanNeed onBack={handleBack} onNext={handleNext} />}
-          {adType === "Offer" && <POSTanOffer onBack={handleBack} onNext={handleNext} />}
-        </>
+        <POSTANADS onBack={handleBack} onNext={handleNext} />
       )}
 
+      {/* Step 2 - Payment */}
       {step === "payment" && (
-        <div className="flex flex-col space-y-4 w-full">
-          <h2 className="text-xl font-bold">Payment for {adType}</h2>
-          <input type="text" placeholder="Card Number" className="border p-2 rounded" />
-          <input type="text" placeholder="Expiry Date" className="border p-2 rounded" />
-          <div className="flex justify-between">
-            <button onClick={handleBack} className="px-4 py-2 bg-gray-300 rounded">
-              Back
-            </button>
-            <button onClick={handleNext} className="px-4 py-2 bg-green-400 text-white rounded">
-              Pay
-            </button>
-          </div>
-        </div>
+        <PaymentForAds onBack={handleBack} onNext={handleNext} />
       )}
 
+      {/* Step 3 - Verification */}
+      {step === "verification" && (
+        <_VerificationForAds onBack={handleBack} onNext={handleNext} />
+      )}
+
+      {/* Step 4 - Success */}
       {step === "success" && (
-        <div className="flex flex-col items-center space-y-4">
-          <h2 className="text-2xl font-bold text-green-600">Success!</h2>
-          <p>Your {adType} has been posted successfully.</p>
-          <button onClick={handleClose} className="px-6 py-3 bg-blue-400 text-white rounded-lg">
+        <div className="flex flex-col items-center justify-center min-h-screen space-y-4">
+          <h2 className="text-2xl font-bold text-green-600">Published!</h2>
+          <p className="text-center">
+            Your <strong>{formData.typeofads}</strong> has been successfully
+            verified and published.
+          </p>
+          <button
+            onClick={handleClose}
+            className="px-6 py-3 bg-blue-400 text-white rounded-lg hover:bg-blue-500 transition-colors"
+          >
             Close
           </button>
         </div>

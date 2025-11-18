@@ -1,0 +1,30 @@
+Blue Color Palette
+
+Primary Blue (Buttons, Links, Highlights):
+#2563EB (Tailwind blue-600) 
+
+Primary Hover Blue:
+#1D4ED8 (Tailwind blue-700)
+
+Light Blue Accent (Hover effects / Active States):
+#60A5FA (Tailwind blue-400)
+
+Sidebar Background (Dark Gray):
+#1F2937 (Tailwind gray-800)
+
+Sidebar Text:
+#F9FAFB (white, Tailwind gray-50)
+
+Main Content Background:
+#FFFFFF (white)
+
+Main Content Text:
+#111827 (Tailwind gray-900)
+
+Success/Positive (e.g., Offers, Deals):
+#22C55E (Tailwind green-500)
+
+Error/Warning (like 404):
+#EF4444 (Tailwind red-500)
+
+#2563EB

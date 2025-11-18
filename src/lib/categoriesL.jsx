@@ -99,7 +99,7 @@ export const DASHBOARD_SIDEBAR_LINKS = [
     },
     {
         key: 'spa_hotels',
-        label: 'Spa & Hotels',
+        label: 'Spa,Saloon & Hotels',
         path: '/spa-hotels',
         icon: <HiLocationMarker />
     },

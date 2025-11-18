@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 
-import Headslides from '../slides/Headslides';
+import Headslides from '../slides/Sidebarslides';
 import Searchslides from '../slides/Searchslides';
 
 const Layout = () => {
@@ -31,7 +31,7 @@ const Layout = () => {
   }, [isModalOpen]);
 
   return (
-    <div className='flex flex-row overflow-hidden bg-neutral-100 w-screen h-screen relative'>
+    <div className='flex flex-row overflow-hidden bg-neutral-100 w-screen h-screen relative font-playfair font-bold'>
       {/* Sidebar */}
       <div
         className={`fixed inset-y-0 left-0 z-20 transform bg-white shadow-lg transition-transform duration-300 ease-in-out

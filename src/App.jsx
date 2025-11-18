@@ -20,6 +20,8 @@ import PostAdd from './components/pages/PostAdd';
 import AdDetailPage from './components/pages/AdDetailPage';
 import UserSettingsPage from './components/pages/UserSettingsPage';
 import Demo from './components/pages/demo';
+import Editad from './components/pages/edit-ad.jsx';
+import ShowPageProfile from './components/pages/ShowPageProfile';
 
 import PrivateRoute from './Middleware/PrivateRoute';
 
@@ -31,12 +33,35 @@ function App() {
         <Route path="/" element={<Layout />}>
           <Route index element={<Categories />} />
           <Route path="offers" element={<Offers />} />
-          <Route path="page" element={<PrivateRoute><Page /></PrivateRoute> }/>
-          <Route path="groups" element={<PrivateRoute><Groups /></PrivateRoute>}/>
+
+          <Route path="page" element={<PrivateRoute><Page /></PrivateRoute>} />
+          <Route path="ShowPageProfile/:id" element={<PrivateRoute><ShowPageProfile /></PrivateRoute>} />
+
+          <Route path="groups" element={<PrivateRoute><Groups /></PrivateRoute>} />
           <Route path="myads" element={<PrivateRoute><Myads /></PrivateRoute>} />
+          <Route path="edit-ad/:id" element={<PrivateRoute><Editad /></PrivateRoute>} />
+          
+          {/* ✅ FIXED: All three view modes with category/subcategory support */}
+          
+          {/* View All Ads Routes */}
           <Route path="viewallads" element={<ViewAllAds />} />
-          <Route path="categories" element={<Categories />} />
+<Route path="viewallads/:countrySlug" element={<ViewAllAds />} />
+<Route path="viewallads/:countrySlug/:categorySlug" element={<ViewAllAds />} />
+<Route path="viewallads/:countrySlug/:categorySlug/:subCategorySlug" element={<ViewAllAds />} />
+
+         
+          {/* Offers Routes */}
+          <Route path="offers//:countrySlug" element={<Offers />} />
+          <Route path="offers/:countrySlug/:categorySlug" element={<Offers />} />
+          <Route path="offers/:countrySlug/:categorySlug/:subCategorySlug" element={<Offers />} />
+          
+          {/* My Needs Routes */}
           <Route path="myneeds" element={<MyNeeds />} />
+          <Route path="myneeds/:countrySlug" element={<MyNeeds />} />
+          <Route path="myneeds/:countrySlug/:categorySlug" element={<MyNeeds />} />
+          <Route path="myneeds/:countrySlug/:categorySlug/:subCategorySlug" element={<MyNeeds />} />
+          
+          <Route path="categories" element={<Categories />} />
           <Route path="support" element={<Support />} />
           <Route path="PostAdd" element={<PostAdd />} />
           <Route path="AdDetailPage/:id" element={<AdDetailPage />} />

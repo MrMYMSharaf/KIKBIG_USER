@@ -5,7 +5,14 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+       colors: {
+      primary: "#00008F",
+    },
+    fontFamily: {
+        playfair: ['"Playfair Display"', 'serif'],
+      },
+    },
     screens: {
       'sm': '640px',
       // => @media (min-width: 640px) { ... }

@@ -2,28 +2,39 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useLoginUserMutation } from "../../features/authSlice";
+import { useDispatch } from "react-redux";
+import { setCredentials } from "../../features/redux/authSlice";
 
 const Login = () => {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const [loginUser, { isLoading, error }] = useLoginUserMutation();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     try {
       const result = await loginUser({ email, password }).unwrap();
       console.log("✅ Login success:", result);
 
-      // Example: save token in localStorage
+      // ✅ Store user data in Redux
+      // Backend sets HTTP-only cookie AND returns token for Redux state
+      dispatch(setCredentials({ 
+        user: result.user,
+        token: result.token // Store token in Redux for userId extraction
+      }));
+
+      // ✅ Also store in localStorage as backup (for page refreshes)
       if (result.token) {
         localStorage.setItem("token", result.token);
+        localStorage.setItem("user", JSON.stringify(result.user));
       }
 
-      // redirect to dashboard
-      navigate("/dashboard");
+      // Redirect to Home Page
+      navigate("/");
     } catch (err) {
       console.error("❌ Login failed:", err);
     }

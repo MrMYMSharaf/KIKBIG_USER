@@ -5,7 +5,7 @@ const PaymentButton = () => {
     const paymentDetails = {
       order_id: "ItemNo12345",
       amount: "1005.00",
-      currency: "LKR",
+      currency: "LKR", //LKR,USD,GBP,EUR,AUD 4916217501611292
       first_name: "Saman",
       last_name: "Perera",
       email: "samanp@gmail.com",
