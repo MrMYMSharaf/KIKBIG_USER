@@ -10,6 +10,7 @@ import {
   Eye,
   Crown
 } from 'lucide-react';
+import { useNavigate } from "react-router-dom";
 
 const dummyPagesData = [
   {
@@ -103,6 +104,7 @@ const Page = () => {
   const [viewMode, setViewMode] = useState('grid');
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const navigate = useNavigate();
   
   // Filter states
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -110,6 +112,11 @@ const Page = () => {
   const [minRating, setMinRating] = useState(0);
   const [sortBy, setSortBy] = useState('');
   const [superMemberOnly, setSuperMemberOnly] = useState(false);
+
+  const createNewPage = () => {
+  navigate("/pages/create");
+};
+
 
   const filteredPages = dummyPagesData.filter(page => {
     const matchesSearch = page.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -167,7 +174,9 @@ const Page = () => {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-800">My Pages</h1>
-          <button className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition">
+          <button className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition"
+          onClick={createNewPage}
+          >
             <PlusCircle className="mr-2" size={20} />
             Create New Page
           </button>

@@ -10,7 +10,7 @@ import {
   resetAdPost,
 } from "../../features/redux/adPostSlice";
 
-import Choose from "./choose";
+import Choose from "./choose.jsx";
 import POSTANADS from "./POSTANADS";
 import PaymentForAds from "./_PaymentForAds";
 import _VerificationForAds from "./_VerificationForAds";

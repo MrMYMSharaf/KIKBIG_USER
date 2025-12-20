@@ -2,54 +2,82 @@
 import { store } from "../store/store";
 import { paymentApi } from "../features/paymentApiSlice";
 
-export const handlePayment = async ({ adType, amount }) => {
+export const handlePayment = async ({
+  adType,
+  amount,
+  currency,
+  countryCode,
+}) => {
   try {
-    console.log(`💳 Starting payment for ${adType}, amount: ${amount}`);
-    
-    // Generate unique order ID
-    const order_id = `AD-${Date.now()}`;
-    
-    // Prepare payment details to send to backend
-    const paymentDetails = {
-      order_id: order_id,
-      amount: amount.toString(), // Convert to string
-      currency: "LKR",
-      first_name: "Saman",
-      last_name: "Perera",
-      email: "samanp@gmail.com",
-      phone: "0771234567",
-      address: "No.1, Galle Road",
-      city: "Colombo",
-      country: "Sri Lanka",
-      items: "Advertisement Posting", // More descriptive
-      // Store adType separately for your own tracking
-      metadata: { adType }
+    const state = store.getState();
+    const user = state.auth.user;
+    const adForm = state.adPost.formData;
+    const contact = adForm.contact || {};
+
+    if (!user) {
+      alert("User not logged in");
+      return false;
+    }
+
+    // ✅ UNIQUE ORDER ID
+    const orderId = `AD-${Date.now()}`;
+
+    const countryMap = {
+      LK: "Sri Lanka",
+      US: "United States",
+      AU: "Australia",
     };
 
-    // 1️⃣ Start payment via RTK Query - get hash from backend
+    const countryName = countryMap[countryCode] || "Sri Lanka";
+
+    // 🔥 SEND FULL DATA TO BACKEND
+    const paymentDetails = {
+      orderId,
+      userId: user._id || user.id,
+      payfor: "Advertisement",
+
+      amount: Number(amount).toFixed(2),
+      currency,
+
+      first_name: user.firstName || user.name || "User",
+      last_name: user.lastName || "",
+      email: contact.email || user.email || "",
+      phone: contact.phone || user.phone || "",
+      address: "N/A",
+      city: "N/A",
+      country: countryName,
+
+      items: adForm.title || "Advertisement",
+      metadata: { adType, countryCode, adId: adForm._id },
+    };
+
+    // 1️⃣ CALL BACKEND /start to create pending payment
     const result = await store.dispatch(
       paymentApi.endpoints.startPayment.initiate(paymentDetails)
     );
 
     if (result.error) {
-      console.error("❌ Payment failed to start:", result.error);
-      alert("Failed to initialize payment. Please try again.");
+      console.error("❌ Payment initialization failed:", result.error);
+      alert("Payment initialization failed");
       return false;
     }
 
     const { hash, merchant_id } = result.data;
 
-    // 2️⃣ Prepare PayHere payment object using the SAME details sent to backend
+    // 2️⃣ PREPARE PAYHERE PAYMENT OBJECT
     const payment = {
-      sandbox: true, // Use sandbox for testing
-      merchant_id: merchant_id,
-      return_url: "http://localhost:3000/payment/success", // Frontend return URL
-      cancel_url: "http://localhost:3000/payment/cancel", // Frontend cancel URL
-      notify_url: "http://localhost:4000/payment/notify", // Backend notify URL - must be publicly accessible
-      order_id: paymentDetails.order_id,
+      sandbox: true,
+      merchant_id,
+
+      return_url: "http://localhost:5173/payment/success",
+      cancel_url: "http://localhost:5173/payment/cancel",
+      notify_url: "http://localhost:4000/payment/notify",
+
+      order_id: orderId,
       items: paymentDetails.items,
       amount: paymentDetails.amount,
       currency: paymentDetails.currency,
+
       first_name: paymentDetails.first_name,
       last_name: paymentDetails.last_name,
       email: paymentDetails.email,
@@ -57,45 +85,50 @@ export const handlePayment = async ({ adType, amount }) => {
       address: paymentDetails.address,
       city: paymentDetails.city,
       country: paymentDetails.country,
-      hash: hash, // Hash from backend
+
+      hash,
     };
 
-    console.log("🔐 Payment object prepared:", payment);
-
-    // 3️⃣ Check if PayHere is loaded
-    if (!window.payhere) {
-      console.error("⚠️ PayHere script not loaded!");
-      alert("Payment gateway not loaded. Please refresh the page.");
-      return false;
-    }
-
-    // 4️⃣ Set up PayHere event handlers
+    // 3️⃣ START PAYHERE PAYMENT AND HANDLE CALLBACKS
     return new Promise((resolve) => {
-      window.payhere.onCompleted = function onCompleted(orderId) {
-        console.log("✅ Payment completed. OrderID:", orderId);
-        resolve(true);
+      window.payhere.onCompleted = async () => {
+        console.log("✅ PayHere COMPLETED | Order:", payment.order_id);
+
+        try {
+          // 4️⃣ CALL BACKEND VERIFY ENDPOINT
+          const verifyResult = await store.dispatch(
+            paymentApi.endpoints.verifyPayment.initiate({ orderId: payment.order_id })
+          );
+
+          if (verifyResult.data?.status === "completed") {
+            console.log("Payment verified ✅", verifyResult.data);
+            resolve(true); // Payment success
+          } else {
+            console.warn("Payment not verified ❌", verifyResult.data);
+            resolve(false);
+          }
+        } catch (err) {
+          console.error("Payment verification failed:", err);
+          resolve(false);
+        }
       };
 
-      window.payhere.onDismissed = function onDismissed() {
-        console.log("❌ Payment dismissed by user");
-        alert("Payment was cancelled");
+      window.payhere.onDismissed = () => {
+        console.log("⚠️ Payment dismissed by user");
         resolve(false);
       };
 
-      window.payhere.onError = function onError(error) {
-        console.error("❌ Payment error:", error);
-        alert("Payment failed. Please try again.");
+      window.payhere.onError = (err) => {
+        console.error("❌ PayHere ERROR:", err);
         resolve(false);
       };
 
-      // 5️⃣ Trigger PayHere popup
-      console.log("🚀 Opening PayHere popup...");
+      console.log("🚀 Starting PayHere payment popup...");
       window.payhere.startPayment(payment);
     });
-
-  } catch (error) {
-    console.error("❌ Payment Exception:", error);
-    alert("An error occurred during payment. Please try again.");
+  } catch (err) {
+    console.error("❌ Payment exception:", err);
+    alert("Payment error occurred");
     return false;
   }
 };

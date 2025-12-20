@@ -1,29 +1,30 @@
 // src/lib/consts/navigation.js
 import { HiOutlineViewGrid, HiOutlineCube,HiOutlineSpeakerphone, HiOutlineShoppingCart, HiOutlineUsers, HiOutlineDocumentText, HiOutlineAnnotation, HiOutlineCog, HiOutlineQuestionMarkCircle } from "react-icons/hi";
 
-export const DASHBOARD_SIDEBAR_LINKS = [
+export const DASHBOARD_SIDEBAR_LINKS = (activeCountry) => {
+    return [
     {
         key: 'categories',
         label: 'Categories',
-        path: '/',
+        path:   `/${activeCountry}/`,
         icon: <HiOutlineViewGrid />
     },
     {
         key: 'viewallads',
         label: 'View All Ads',
-        path: '/viewallads',
+        path: `/${activeCountry}/viewallads`,
         icon: <HiOutlineCube />
     },
     {
         key: 'myneeds',
         label: 'My Needs',
-        path: '/myneeds',
+        path: `/${activeCountry}/myneeds`,
         icon: <HiOutlineSpeakerphone />
     },
     {
         key: 'offers',
         label: 'Offers',
-        path: '/offers',
+        path: `/${activeCountry}/offers`,
         icon: <HiOutlineSpeakerphone />
     },
     
@@ -43,11 +44,11 @@ export const DASHBOARD_SIDEBAR_LINKS = [
     {
         key: 'page',
         label: 'Page',
-        path: '/page',
+        path: `/${activeCountry}/page`,
         icon: <HiOutlineDocumentText />
     },
     
-];
+];};
 
 export const DASHBOARD_SIDEBAR_BOTTOM_LINKS = [
     {

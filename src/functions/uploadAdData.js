@@ -126,6 +126,22 @@ export const uploadAdData = async (adData) => {
     ).unwrap();
 
     console.log("✅ Upload successful:", result);
+    // 🔥 NEW: Extract and store the uploaded ad ID
+    const uploadedAdId = result?.data?._id || result?._id;
+    
+    if (uploadedAdId) {
+      console.log("📌 Storing uploaded ad ID:", uploadedAdId);
+      
+      // Import setUploadedAdId at the top of file
+      const { setUploadedAdId } = await import("../features/redux/adPostSlice");
+      store.dispatch(setUploadedAdId(uploadedAdId));
+      
+      // Also store in localStorage as backup
+      localStorage.setItem('lastUploadedAdId', uploadedAdId);
+    } else {
+      console.warn("⚠️ No ad ID found in response:", result);
+    }
+    
     return result;
 
   } catch (error) {

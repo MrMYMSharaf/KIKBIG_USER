@@ -1,17 +1,19 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import AdsCard from "../shared/card/AdsCard";
 import { FaTh, FaBars } from "react-icons/fa";
-import { useGetAllAdvertisementsNeedsQuery } from "../../features/postadsSlice";
-import { useNavigate } from "react-router-dom";
+import { useGetNeedsByCountryQuery } from "../../features/postadsSlice";
+import { useNavigate, useParams } from "react-router-dom";
 import AdvertisementSkeleton from "../component/SkeletonLoading/advertisementSkeleton.jsx";
 
 const MyNeeds = () => {
+  console.log("MyNeeds component loaded!");
   const [layout, setLayout] = useState("grid");
   const [page, setPage] = useState(1);
   const [allAds, setAllAds] = useState([]);
   const [hasMore, setHasMore] = useState(true);
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
-  const { data, isLoading, isError } = useGetAllAdvertisementsNeedsQuery({ page, limit: 12 });
+  const { countrySlug } = useParams();
+  const { data, isLoading, isError, error } = useGetNeedsByCountryQuery({ countrySlug, page, limit: 12 });
   const navigate = useNavigate();
   const observerTarget = useRef(null);
 
@@ -25,8 +27,10 @@ const MyNeeds = () => {
   const toggleLayout = (newLayout) => setLayout(newLayout);
 
   useEffect(() => {
-    if (isError) navigate("/");
-  }, [isError, navigate]);
+      if (isError && error?.status === 404 && error?.data?.message?.includes('route')) {
+        navigate("/");
+      }
+    }, [isError, error, navigate]);
 
   // Append new data when it loads
   useEffect(() => {
@@ -84,7 +88,30 @@ const MyNeeds = () => {
 
   const adsWithDemos = withDemoAds(allAds);
 
-  if (isError) return <div>Failed to load advertisements.</div>;
+  if (isError && !data) {
+    return (
+      <div className="flex flex-col md:flex-row w-full h-full overflow-hidden">
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex justify-between mb-4">
+            <h1 className="text-2xl font-bold">View All Needs</h1>
+          </div>
+          <div className="flex flex-col items-center justify-center py-20">
+            <svg className="w-24 h-24 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h2 className="text-2xl font-semibold text-gray-700 mb-2">Failed to load NEEDS</h2>
+            <p className="text-gray-500 mb-6">There was an error loading the Needs. Please try again.</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!allAds.length && isLoading) return <AdvertisementSkeleton layout={layout} count={12} />;
 
   return (

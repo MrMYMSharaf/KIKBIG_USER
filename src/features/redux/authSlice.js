@@ -4,8 +4,8 @@ import { authApi } from "../authSlice";
 
 const initialState = {
   user: null,
-  token: localStorage.getItem("token") || null,
-  isAuthenticated: !!localStorage.getItem("token"),
+  isAuthenticated: false,
+  // ❌ NO TOKEN in Redux state (it's in HttpOnly cookie)
 };
 
 const authSlice = createSlice({
@@ -14,17 +14,21 @@ const authSlice = createSlice({
   reducers: {
     logout: (state) => {
       state.user = null;
-      state.token = null;
       state.isAuthenticated = false;
-      localStorage.removeItem("token");
     },
     setCredentials: (state, action) => {
-      const { user, token } = action.payload;
+      const { user } = action.payload;
       state.user = user;
-      state.token = token;
       state.isAuthenticated = true;
-      if (token) {
-        localStorage.setItem("token", token);
+    },
+    clearAuth: (state) => {
+      state.user = null;
+      state.isAuthenticated = false;
+    },
+    // ✅ Optional: Update user data without logging out
+    updateUser: (state, action) => {
+      if (state.user) {
+        state.user = { ...state.user, ...action.payload };
       }
     },
   },
@@ -33,26 +37,28 @@ const authSlice = createSlice({
       .addMatcher(
         authApi.endpoints.loginUser.matchFulfilled,
         (state, action) => {
-          const { user, token } = action.payload;
+          const { user } = action.payload;
           state.user = user;
-          state.token = token;
           state.isAuthenticated = true;
-          if (token) {
-            localStorage.setItem("token", token);
-          }
         }
       )
       .addMatcher(
         authApi.endpoints.logoutUser.matchFulfilled,
         (state) => {
           state.user = null;
-          state.token = null;
           state.isAuthenticated = false;
-          localStorage.removeItem("token");
+        }
+      )
+      // ✅ Handle logout errors (still clear state)
+      .addMatcher(
+        authApi.endpoints.logoutUser.matchRejected,
+        (state) => {
+          state.user = null;
+          state.isAuthenticated = false;
         }
       );
   },
 });
 
-export const { logout, setCredentials } = authSlice.actions;
+export const { logout, setCredentials, clearAuth, updateUser } = authSlice.actions;
 export default authSlice.reducer;

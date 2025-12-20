@@ -1,12 +1,17 @@
-// features/authSlice.js - Temporary fix to test connection
+// features/authSlice.js
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
+
+// ✅ Get base URL from environment variable with fallback
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 export const authApi = createApi({
   reducerPath: "authApi",
   baseQuery: fetchBaseQuery({
-    baseUrl: "http://localhost:4000",
-    // ✅ Temporarily remove credentials to test basic connection
-    credentials: "include", // Comment this out temporarily
+    baseUrl: API_BASE_URL,
+    credentials: "include", // Important for cookies
+    prepareHeaders: (headers) => {
+      return headers;
+    },
   }),
   endpoints: (builder) => ({
     loginUser: builder.mutation({
@@ -29,6 +34,10 @@ export const authApi = createApi({
         method: "POST",
       }),
     }),
+    // ✅ Add endpoint to get current user (for OAuth callback)
+    getCurrentUser: builder.query({
+      query: () => "/api/authuser/me",
+    }),
   }),
 });
 
@@ -36,4 +45,5 @@ export const {
   useLoginUserMutation,
   useRegisterUserMutation,
   useLogoutUserMutation,
+  useGetCurrentUserQuery,
 } = authApi;

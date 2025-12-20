@@ -19,12 +19,11 @@ const POSTANADS = ({ onBack, onNext }) => {
   
 
   // 🔥 Use the auth hook to get user ID
-  const { userId, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
-  // // Redirect if not authenticated
-  if (!isAuthenticated) {
-    return <Navigate to="/auth" replace />;
-  }
+if (authLoading) return null; // wait until auth check is done
+if (!isAuthenticated) return <Navigate to="/auth" replace />;
+
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -302,11 +301,6 @@ const handleContactChange = useCallback((e) => {
       return;
     }
 
-    if (!formData.price) {
-      alert("Please enter a price for your ad");
-      return;
-    }
-
     if (!formData.typeofads) {
     alert("⚠️ Ad type is missing! Please go back and select an ad type.");
     console.error("❌ typeofads is missing from formData:", formData);
@@ -482,7 +476,7 @@ const handleContactChange = useCallback((e) => {
             {/* Price */}
             <div className="space-y-2">
               <label className="block text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wide">
-                Price <span className="text-primary">*</span>
+                Price 
               </label>
               <div className="relative">
                 <span className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 text-primary font-bold text-lg sm:text-xl">$</span>
@@ -493,7 +487,6 @@ const handleContactChange = useCallback((e) => {
                   value={formData.price}
                   onChange={handleChange}
                   className="w-full px-3 sm:px-4 py-3 sm:py-3.5 pl-9 sm:pl-12 text-sm sm:text-base border-2 border-gray-200 rounded-xl focus:border-primary focus:ring-4 focus:ring-blue-100 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 hover:border-gray-300 font-semibold"
-                  required
                 />
               </div>
             </div>

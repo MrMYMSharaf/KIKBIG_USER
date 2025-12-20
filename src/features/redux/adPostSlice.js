@@ -3,6 +3,7 @@ import { createSlice } from "@reduxjs/toolkit";
 const initialState = {
   step: "choose",
   adType: "",
+  uploadedAdId: null,
   formData: {
     userId: "",
     title: "",
@@ -53,6 +54,10 @@ const adPostSlice = createSlice({
     setAdType: (state, action) => {
       state.adType = action.payload;
     },
+    setUploadedAdId: (state, action) => {
+      state.uploadedAdId = action.payload;
+      console.log("✅ Uploaded Ad ID saved to Redux:", action.payload);
+    },
     setUserId: (state, action) => {
       state.formData.userId = action.payload;
     },
@@ -91,6 +96,7 @@ const adPostSlice = createSlice({
 export const {
   setStep,
   setAdType,
+  setUploadedAdId,
   setUserId,
   updateFormData,
   updateSpecialQuestions,

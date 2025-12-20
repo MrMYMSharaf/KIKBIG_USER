@@ -1,22 +1,49 @@
-// ../../functions/handleSignOut.js
-export const useSignOut = () => {
+// functions/handleSignOut.js
+import { useLogoutUserMutation } from "../features/authSlice";
+import { useDispatch } from "react-redux";
+import { clearAuth } from "../features/redux/authSlice";
+import { persistor } from "../store/store";
 
-  const signOut = () => {
-    // Clear localStorage
+export const useSignOut = () => {
+  const [logoutUser] = useLogoutUserMutation();
+  const dispatch = useDispatch();
+
+  const signOut = async () => {
+    try {
+      console.log("🔵 Logging out...");
+      
+      // 1️⃣ Call backend to clear HttpOnly cookies
+      await logoutUser().unwrap();
+      console.log("✅ Backend logout successful");
+    } catch (err) {
+      console.error("⚠️ Logout API failed:", err);
+      // Continue with local cleanup even if API fails
+    }
+
+    // 2️⃣ Clear Redux state
+    dispatch(clearAuth());
+
+    // 3️⃣ Purge persisted state
+    await persistor.purge();
+    console.log("✅ Persisted state purged");
+
+    // 4️⃣ Clear localStorage (backup)
     localStorage.clear();
 
-    // Clear sessionStorage
+    // 5️⃣ Clear sessionStorage
     sessionStorage.clear();
 
-    // Clear all cookies
+    // 6️⃣ Clear non-HttpOnly cookies
     document.cookie.split(";").forEach((c) => {
       document.cookie = c
         .replace(/^ +/, "")
-        .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+        .replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`);
     });
 
-    // Redirect to login and reload page
-    window.location.replace("/auth"); // replaces current history entry
+    console.log("✅ Logout complete, redirecting...");
+
+    // 7️⃣ Redirect to login
+    window.location.replace("/auth");
   };
 
   return signOut;

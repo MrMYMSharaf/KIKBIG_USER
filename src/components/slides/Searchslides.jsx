@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState,useEffect } from 'react';
 import Modal from 'react-modal';
 import { HiOutlineSearch, HiOutlineBell, HiMenu } from 'react-icons/hi';
 import { Menu } from '@headlessui/react';
@@ -6,29 +6,26 @@ import Logo from '../../assets/logo/Pedlar_logo.png';
 import Filter from './Filter';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import PostAdsModal from '../PostAdsModalFlow/PostAdsModal';
 import { useSignOut } from "../../functions/handleSignOut";
+import { useGetCurrentUserQuery } from "../../features/authSlice";
+import { useDispatch } from "react-redux";
 
 const Searchslides = ({ toggleSidebar }) => {
   const [modalIsOpen, setModalIsOpen] = useState(false);
-  const [postAdsModalOpen, setPostAdsModalOpen] = useState(false);
+  // const [postAdsModalOpen, setPostAdsModalOpen] = useState(false);
 
-  const token = useSelector((state) => state.auth.token);
+  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
   const navigate = useNavigate();
-
+  const dispatch = useDispatch();
+ 
+// ✅ Skip query if not authenticated
+const {data} = useGetCurrentUserQuery(undefined, {
+  skip: !isAuthenticated
+});
   const openModal = () => setModalIsOpen(true);
   const closeModal = () => setModalIsOpen(false);
   const signOut = useSignOut();
-  const openPostAdsModal = () => {
-    if (!token) {
-      alert("You must be logged in to post an ad.");
-      navigate("/auth");
-      return;
-    }
-    setPostAdsModalOpen(true);
-    setModalIsOpen(false);
-  };
-  const closePostAdsModal = () => setPostAdsModalOpen(false);
+
 
   return (
     <div className="bg-white border-b-2 border-gray-200 shadow-md">
@@ -50,7 +47,7 @@ const Searchslides = ({ toggleSidebar }) => {
           </div>
 
           <div className="flex items-center gap-2">
-            {token ? (
+            {isAuthenticated ? (
               <>
                 {/* Notification */}
                 <Menu as="div" className="relative">
@@ -95,14 +92,14 @@ const Searchslides = ({ toggleSidebar }) => {
                       <Menu.Button className="focus:outline-none focus:ring-2 focus:ring-white rounded-full">
                         <img 
                           className="w-10 h-10 rounded-full border-3 border-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 ring-2 ring-blue-300" 
-                          src="https://picsum.photos/id/237/200/300" 
+                          src={data?.user?.photo ? data.user.photo : "https://picsum.photos/id/237/200/300"}
                           alt="User Profile" 
                         />
                       </Menu.Button>
                       <Menu.Items className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden">
                         <div className="px-4 py-3 border-b bg-primary text-white">
-                          <p className="font-bold text-sm">John Doe</p>
-                          <p className="text-xs text-blue-100">john@example.com</p>
+                          <p className="font-bold text-sm">{data?.user?.name || "Guest User"}</p>
+                          <p className="text-xs text-blue-100">{data?.user?.email || ""}</p>
                         </div>
                         <Menu.Item>
                           {({ active }) => (
@@ -151,7 +148,7 @@ const Searchslides = ({ toggleSidebar }) => {
             <button
               type="button"
               className="text-white bg-blue-700 hover:bg-blue-800 font-bold rounded-xl text-sm px-4 py-2.5 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 border-2 border-blue-500"
-              onClick={openPostAdsModal}
+              onClick={() => navigate("/post-ads")}
             >
               POST
             </button>
@@ -199,7 +196,7 @@ const Searchslides = ({ toggleSidebar }) => {
         </div>
 
         <div className="flex items-center gap-3">
-          {token ? (
+          {isAuthenticated ? (
             <>
               {/* Notifications */}
               <Menu as="div" className="relative">
@@ -241,14 +238,14 @@ const Searchslides = ({ toggleSidebar }) => {
                     <Menu.Button className="focus:outline-none focus:ring-2 focus:ring-primary rounded-full">
                       <img 
                         className="w-10 h-10 rounded-full border-2 border-primary shadow-md hover:shadow-lg transition-all duration-200" 
-                        src="https://picsum.photos/id/237/200/300" 
+                        src={data?.user?.photo ? data.user.photo : "https://picsum.photos/id/237/200/300"}
                         alt="User Profile" 
                       />
                     </Menu.Button>
                     <Menu.Items className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden">
                       <div className="px-4 py-3 border-b bg-primary text-white">
-                        <p className="font-bold">John Doe</p>
-                        <p className="text-xs text-blue-100">john@example.com</p>
+                        <p className="font-bold text-sm">{data?.user?.name || "Guest User"}</p>
+                        <p className="text-xs text-blue-100">{data?.user?.email || ""}</p>
                       </div>
                       <Menu.Item>
                         {({ active }) => (
@@ -297,7 +294,7 @@ const Searchslides = ({ toggleSidebar }) => {
           <button
             type="button"
             className="text-primary bg-white hover:bg-blue-50 font-bold rounded-lg text-sm px-5 py-2.5 border-2 border-primary shadow-md hover:shadow-lg transition-all duration-200"
-            onClick={openPostAdsModal}
+            onClick={() => navigate("/post-ads")}
           >
             POST ADS
           </button>
@@ -313,12 +310,6 @@ const Searchslides = ({ toggleSidebar }) => {
       >
         <Filter closeModal={closeModal} />
       </Modal>
-
-      {/* Post Ads Modal */}
-      <PostAdsModal
-        isOpen={postAdsModalOpen}
-        onClose={closePostAdsModal}
-      />
     </div>
   );
 };

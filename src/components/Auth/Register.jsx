@@ -152,6 +152,11 @@ const [error, setError] = useState(null);
             </Link>
           </p>
         </div>
+         <div className="mt-4 text-center">
+          <p className="text-gray-600 text-xs">
+            © 2024 KiKBiG. All rights reserved. and developed by <a href="https://main.d1itd6l89st8ta.amplifyapp.com/" className="font-bold">1itech.</a>
+          </p>
+        </div>
       </div>
     </div>
   );

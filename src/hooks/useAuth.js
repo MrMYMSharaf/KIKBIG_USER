@@ -1,37 +1,35 @@
-// src/hooks/useAuth.js
+import Cookies from "js-cookie";
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { setUserId } from '../features/redux/adPostSlice';
 
 /**
- * Custom hook to sync auth data with ad post slice
- * Uses existing Redux auth state
+ * Custom hook to sync auth data + cookie token
  */
 export const useAuth = () => {
   const dispatch = useDispatch();
-  
-  // Get auth data from existing auth slice
-  const { user, token, isAuthenticated } = useSelector((state) => state.auth);
+
+  const { user, isAuthenticated } = useSelector((state) => state.auth);
+
+  // ✅ Read token from cookies
+  const token = Cookies.get("token");
+
+  // Determine final auth state:
+  const isUserLoggedIn = Boolean(token || isAuthenticated);
+
+  const userId = user?.id || user?._id;
 
   useEffect(() => {
-    if (isAuthenticated && user) {
-      // ✅ Use user.id directly from the user object
-      const userId = user.id || user._id;
-
-      if (userId) {
-        console.log("✅ useAuth: Setting userId in adPost slice:", userId);
-        dispatch(setUserId(userId));
-      } else {
-        console.error("❌ useAuth: No userId found in user object:", user);
-      }
+    if (isUserLoggedIn && userId) {
+      console.log("🔵 useAuth: Syncing userId to adPost:", userId);
+      dispatch(setUserId(userId));
     }
-  }, [isAuthenticated, user, dispatch]);
+  }, [isUserLoggedIn, userId, dispatch]);
 
   return {
-    userId: user?.id || user?._id,
+    userId,
     user,
+    isAuthenticated: isUserLoggedIn, // override with cookie-based check
     token,
-    isAuthenticated,
-    isLoading: false,
   };
 };

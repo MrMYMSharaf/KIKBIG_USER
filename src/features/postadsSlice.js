@@ -101,6 +101,36 @@ export const postadvertisementApi = createApi({
   providesTags: ['Advertisement'],
 }),
 
+getAdvertisementsAdsByCountry: builder.query({
+  query: ({ countrySlug, page = 1, limit = 12 }) => ({
+    url: `/api/${countrySlug}/ads`,
+    method: "GET",
+    params: { page, limit },
+  }),
+  providesTags: ["Advertisement"],
+}),
+
+getNeedsByCountry: builder.query({
+  query: ({ countrySlug, page = 1, limit = 12 }) => ({
+    url: `/api/${countrySlug}/needs`,
+    method: "GET",
+    params: { page, limit },
+  }),
+  providesTags: ["Advertisement"],
+}),
+
+getOffersByCountry: builder.query({
+  query: ({ countrySlug, page = 1, limit = 12 }) => ({
+    url: `/api/${countrySlug}/offers`,
+    method: "GET",
+    params: { page, limit },
+  }),
+  providesTags: ["Advertisement"],
+}),
+
+
+
+
 
     updateAdvertisement: builder.mutation({
       query: ({ id, formData }) => ({
@@ -138,4 +168,7 @@ export const {
   useDeleteAdvertisementMutation, 
   useGetAdvertisementByIdQuery,
   useGetAdvertisementsByCategoryQuery,
+  useGetAdvertisementsAdsByCountryQuery,
+  useGetNeedsByCountryQuery,
+  useGetOffersByCountryQuery, 
 } = postadvertisementApi;

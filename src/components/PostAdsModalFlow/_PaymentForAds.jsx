@@ -1,34 +1,90 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useSelector } from "react-redux";
 import { useAdtypeQuery } from "../../features/adtypeSlice";
+import { useLocationQuery } from "../../features/locationSlice";
 import { uploadAdData } from "../../functions/uploadAdData";
 import { handlePayment } from "../../functions/handlePayment";
 
 const PaymentForAds = ({ onBack, onNext }) => {
+
+  
   const { data: adTypesData, error, isLoading } = useAdtypeQuery();
+  const { data: locationsData } = useLocationQuery();
   
   // Get pricing data from Redux
   const extraImagesCount = useSelector((state) => state.adPost.pricing.extraImagesCount);
   const pricePerExtraImage = useSelector((state) => state.adPost.pricing.pricePerExtraImage);
   const formDataFromRedux = useSelector((state) => state.adPost.formData);
 
-    // ✅ Get user data from auth slice (NOT from adPost)
-  // ✅ Get user data from auth slice
+  // Get user data from auth slice
   const { user, token } = useSelector((state) => state.auth);
   const userId = user?.id || user?._id;
-  const userType = user?.userType; // ✅ Get userType from auth
+  const userType = user?.userType;
   
   const [formData, setFormData] = useState({
     adType: "",
   });
 
   const adTypes = adTypesData || [];
+  
+  // 🔥 NEW: Get country information from selected location
+  const getCountryInfo = useMemo(() => {
+    const countries = locationsData?.data || [];
+    const selectedCountry = countries.find((c) => c._id === formDataFromRedux.country);
+    
+    if (!selectedCountry) {
+      return { code: 'US', currency: 'USD', symbol: '$' };
+    }
+
+    // Map country codes to currency info
+    const currencyMap = {
+      'LK': { code: 'LK', currency: 'LKR', symbol: 'Rs.' },
+      'AU': { code: 'AU', currency: 'AU', symbol: 'A$' },
+      'US': { code: 'US', currency: 'USD', symbol: '$' },
+    };
+
+    // Try to match by country code or name
+    const countryCode = selectedCountry.code?.toUpperCase();
+    const countryName = selectedCountry.name?.toLowerCase();
+
+    if (countryCode === 'LK' || countryName?.includes('sri lanka')) {
+      return currencyMap.LK;
+    } else if (countryCode === 'AU' || countryName?.includes('australia')) {
+      return currencyMap.AU;
+    } else {
+      return currencyMap.US; // Default to USD for all other countries
+    }
+  }, [formDataFromRedux.country, locationsData]);
+
+  // 🔥 NEW: Get country-specific pricing for ad types
+  const getAdTypePrice = (adType) => {
+    if (!adType?.prices) return 0;
+    
+    // Try to get price for selected country
+    const countryPrice = adType.prices[getCountryInfo.code];
+    
+    if (countryPrice) {
+      return countryPrice.price;
+    }
+    
+    // Fallback to USD if country not found
+    return adType.prices.US?.price || 0;
+  };
+
   const selectedAdType = adTypes.find(type => type._id === formData.adType);
 
-  // Calculate total costs
+  // 🔥 Auto-select the first ad type if none is selected
+  useEffect(() => {
+    if (adTypes.length > 0 && !formData.adType) {
+      console.log("Auto-selecting first ad type:", adTypes[0]._id);
+      setFormData({ adType: adTypes[0]._id });
+    }
+  }, [adTypes, formData.adType]);
+
+  // 🔥 UPDATED: Calculate total costs with country-specific pricing
   const costBreakdown = useMemo(() => {
     const extraImagesCost = extraImagesCount * pricePerExtraImage;
-    const adTypeCost = selectedAdType?.price || 0;
+    const adTypeCost = selectedAdType ? getAdTypePrice(selectedAdType) : 0;
     const totalCost = extraImagesCost + adTypeCost;
     
     return {
@@ -36,88 +92,77 @@ const PaymentForAds = ({ onBack, onNext }) => {
       adTypeCost,
       totalCost,
       hasExtraImages: extraImagesCount > 0,
-      isFree: totalCost === 0
+      isFree: totalCost === 0,
+      currency: getCountryInfo.currency,
+      currencySymbol: getCountryInfo.symbol
     };
-  }, [extraImagesCount, pricePerExtraImage, selectedAdType]);
+  }, [extraImagesCount, pricePerExtraImage, selectedAdType, getCountryInfo]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-   const handlePaymentClick = async () => {
-    // ✅ Debug log
-    console.log("🔍 Pre-upload validation:");
-    console.log("userId:", userId);
-    console.log("userType:", userType);
-    console.log("title:", formDataFromRedux.title);
-    console.log("description:", formDataFromRedux.description);
-    console.log("category:", formDataFromRedux.category);
-    console.log("images count:", formDataFromRedux.images?.length);
-    
-    // Validate images
-    if (formDataFromRedux.images) {
-      formDataFromRedux.images.forEach((img, i) => {
-        console.log(`Image ${i}:`, img instanceof File ? "✅ File" : "❌ Not a File Object", img);
+  const handlePaymentClick = async () => {
+  if (!userId) {
+    alert("Please login again");
+    return;
+  }
+
+  if (!selectedAdType) {
+    alert("Please select ad type");
+    return;
+  }
+
+  try {
+    // FREE AD
+    if (costBreakdown.isFree) {
+      await uploadAdData({
+        ...formDataFromRedux,
+        userId,
+        userType,
+        adType: selectedAdType._id,
+        totalCost: 0,
+        currency: costBreakdown.currency,
+        countryCode: getCountryInfo.code,
       });
-    }
-    
-    // ✅ Validate userId
-    if (!userId) {
-      alert("Authentication error. Please login again.");
-      return;
-    }
-    
-    if (!formData.adType) {
-      alert("Please select an Ad Type before proceeding");
+
+      onNext();
       return;
     }
 
-    const selected = adTypes.find(t => t._id === formData.adType);
-    if (!selected) return;
+    // PAID AD
+    const paymentSuccess = await handlePayment({
+      amount: costBreakdown.totalCost,
+      currency: costBreakdown.currency,
+      adType: selectedAdType.name,
+      countryCode: getCountryInfo.code,
+    });
 
-    try {
-      if (costBreakdown.isFree) {
-        // ✅ Upload ad with userId and userType
-        await uploadAdData({
-          ...formDataFromRedux,
-          userId,
-          userType, // ✅ Include userType
-          adType: selectedAdType._id,
-          totalCost: costBreakdown.totalCost,
-        });
-      
-        alert("Ad posted successfully!");
-        onNext();
-      } else {
-        // Paid Ad → PayHere popup
-        const paymentSuccess = await handlePayment({
-          adType: selected._id,
-          amount: costBreakdown.totalCost,
-          extraImagesCost: costBreakdown.extraImagesCost,
-          adTypeCost: costBreakdown.adTypeCost
-        });
-
-        if (paymentSuccess) {
-          await uploadAdData({ 
-            ...formDataFromRedux,
-            userId,
-            userType, // ✅ Include userType
-            adType: selected._id, 
-            price: costBreakdown.adTypeCost,
-            extraImagesCost: costBreakdown.extraImagesCost,
-            totalCost: costBreakdown.totalCost
-          });
-          onNext(); 
-        } else {
-          alert("Payment failed. Please try again.");
-        }
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Something went wrong during posting.");
+    if (!paymentSuccess) {
+      alert("Payment failed");
+      return;
     }
-  };
+
+    await uploadAdData({
+      ...formDataFromRedux,
+      userId,
+      userType,
+      adType: selectedAdType._id,
+      price: costBreakdown.adTypeCost,
+      extraImagesCost: costBreakdown.extraImagesCost,
+      totalCost: costBreakdown.totalCost,
+      currency: costBreakdown.currency,
+      countryCode: getCountryInfo.code,
+    });
+
+    onNext();
+  } catch (err) {
+    console.error(err);
+    alert("Something went wrong");
+  }
+};
+
 
   // Progress Steps
   const steps = [
@@ -130,74 +175,29 @@ const PaymentForAds = ({ onBack, onNext }) => {
   // Ad placement visualization based on priority
   const getAdPlacementVisualization = (priority) => {
     const placements = {
+      0: {
+        title: "VIP Placement",
+        features: ["Maximum visibility", "Top of all sections", "Priority badge", "Extended duration", "5x more exposure"],
+        color: "from-purple-500 to-pink-600",
+        badge: "👑 VIP",
+      },
       1: {
         title: "Premium Featured Placement",
         features: ["Top of search results", "Homepage featured section", "Highlighted border", "Badge display", "3x more visibility"],
         color: "from-yellow-400 to-orange-500",
         badge: "⭐ PREMIUM",
-        example: (
-          <div className="space-y-3">
-            <div className="border-4 border-yellow-400 rounded-lg p-4 bg-gradient-to-br from-yellow-50 to-orange-50 relative">
-              <div className="absolute top-2 right-2 bg-yellow-400 text-white px-3 py-1 rounded-full text-xs font-bold">
-                ⭐ FEATURED
-              </div>
-              <div className="flex gap-3">
-                <div className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs">
-                  Your Image
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-bold text-lg text-gray-900">Your Ad Title</h4>
-                  <p className="text-sm text-gray-600 mt-1">Your description here...</p>
-                  <p className="text-lg font-bold text-primary mt-2">$XXX</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
       },
       2: {
         title: "Standard Highlighted Placement",
         features: ["Regular search results", "Light highlighting", "Standard visibility", "Good exposure"],
         color: "from-blue-400 to-blue-600",
         badge: "✨ HIGHLIGHTED",
-        example: (
-          <div className="space-y-3">
-            <div className="border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
-              <div className="flex gap-3">
-                <div className="w-20 h-20 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs">
-                  Your Image
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-bold text-base text-gray-900">Your Ad Title</h4>
-                  <p className="text-xs text-gray-600 mt-1">Your description here...</p>
-                  <p className="text-base font-bold text-primary mt-1">$XXX</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
       },
       3: {
         title: "Free Basic Placement",
         features: ["Standard listing", "Regular search results", "No special highlighting", "Basic visibility"],
         color: "from-gray-400 to-gray-600",
         badge: "📋 BASIC",
-        example: (
-          <div className="space-y-3">
-            <div className="border border-gray-200 rounded-lg p-3 bg-white">
-              <div className="flex gap-2">
-                <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs">
-                  Image
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-semibold text-sm text-gray-900">Your Ad Title</h4>
-                  <p className="text-xs text-gray-500 mt-1">Description...</p>
-                  <p className="text-sm font-bold text-primary mt-1">$XXX</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
       }
     };
 
@@ -215,7 +215,7 @@ const PaymentForAds = ({ onBack, onNext }) => {
     );
   }
 
-  if (error) {
+  if (error || adTypes.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-gray-50 py-8 px-4 flex items-center justify-center">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md">
@@ -261,6 +261,23 @@ const PaymentForAds = ({ onBack, onNext }) => {
           </div>
         </div>
 
+        {/* 🔥 NEW: Country & Currency Info Banner */}
+        <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl shadow-lg p-4 mb-6 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="text-3xl">🌍</div>
+              <div>
+                <p className="text-sm font-semibold opacity-90">Selected Location</p>
+                <p className="text-lg font-bold">{getCountryInfo.currency} Pricing</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-sm opacity-90">Currency</p>
+              <p className="text-2xl font-bold">{costBreakdown.currencySymbol}</p>
+            </div>
+          </div>
+        </div>
+
         {/* Header Section */}
         <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl overflow-hidden mb-4 sm:mb-6 border border-gray-100">
           <div className="bg-gradient-to-r from-primary to-blue-700 p-4 sm:p-8">
@@ -282,8 +299,8 @@ const PaymentForAds = ({ onBack, onNext }) => {
             <div className="space-y-3 sm:space-y-4">
               {adTypes.map((type) => {
                 const isSelected = formData.adType === type._id;
-                const isFree = type.price === 0;
-                const placement = getAdPlacementVisualization(type.priority);
+                const typePrice = getAdTypePrice(type);
+                const isFree = typePrice === 0;
                 
                 return (
                   <div
@@ -305,7 +322,8 @@ const PaymentForAds = ({ onBack, onNext }) => {
                             </span>
                           )}
                         </div>
-                        <p className="text-xs sm:text-sm text-gray-600 mb-3">{type.description}</p>
+                        <p className="text-xs sm:text-sm text-gray-600 mb-2">{type.description}</p>
+                        <p className="text-xs text-gray-500 mb-3">Valid for {type.validdays} days</p>
                         
                         <div className="flex items-baseline gap-2">
                           {isFree ? (
@@ -313,7 +331,10 @@ const PaymentForAds = ({ onBack, onNext }) => {
                           ) : (
                             <>
                               <span className="text-xs sm:text-sm text-gray-500">Price:</span>
-                              <span className="text-2xl sm:text-3xl font-bold text-primary">${type.price}</span>
+                              <span className="text-2xl sm:text-3xl font-bold text-primary">
+                                {costBreakdown.currencySymbol}{typePrice.toLocaleString()}
+                              </span>
+                              <span className="text-xs text-gray-500">{costBreakdown.currency}</span>
                             </>
                           )}
                         </div>
@@ -336,7 +357,7 @@ const PaymentForAds = ({ onBack, onNext }) => {
               })}
             </div>
 
-            {/* Payment Summary with Complete Breakdown */}
+            {/* Payment Summary */}
             {selectedAdType && (
               <div className="border-t-2 border-gray-100 pt-4 sm:pt-6">
                 <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 sm:p-5 border-2 border-blue-200">
@@ -351,7 +372,7 @@ const PaymentForAds = ({ onBack, onNext }) => {
                     <div className="flex justify-between items-center pb-3 border-b border-blue-200">
                       <span className="text-sm text-gray-600">Package Price:</span>
                       <span className={`text-base font-bold ${costBreakdown.adTypeCost === 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                        {costBreakdown.adTypeCost === 0 ? 'FREE' : `$${costBreakdown.adTypeCost}`}
+                        {costBreakdown.adTypeCost === 0 ? 'FREE' : `${costBreakdown.currencySymbol}${costBreakdown.adTypeCost.toLocaleString()}`}
                       </span>
                     </div>
 
@@ -365,10 +386,7 @@ const PaymentForAds = ({ onBack, onNext }) => {
                         <div className="flex justify-between items-center pb-3 border-b border-blue-200">
                           <span className="text-sm text-gray-600">Images Cost:</span>
                           <span className="text-base font-bold text-orange-600">
-                            ${costBreakdown.extraImagesCost}
-                            <span className="text-xs text-gray-500 ml-1">
-                              (${pricePerExtraImage} × {extraImagesCount})
-                            </span>
+                            {costBreakdown.currencySymbol}{costBreakdown.extraImagesCost.toLocaleString()}
                           </span>
                         </div>
                       </>
@@ -377,32 +395,16 @@ const PaymentForAds = ({ onBack, onNext }) => {
                     {/* Total Amount */}
                     <div className="flex justify-between items-center pt-2 bg-gradient-to-r from-blue-100 to-indigo-100 -mx-4 sm:-mx-5 px-4 sm:px-5 py-3 rounded-b-lg">
                       <span className="text-base font-bold text-gray-900">Total Amount:</span>
-                      <span className={`text-2xl font-bold ${costBreakdown.isFree ? 'text-green-600' : 'text-primary'}`}>
-                        {costBreakdown.isFree ? 'FREE' : `$${costBreakdown.totalCost}`}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Cost Breakdown Details */}
-                  {costBreakdown.hasExtraImages && (
-                    <div className="mt-4 pt-4 border-t border-blue-200">
-                      <div className="bg-white rounded-lg p-3 space-y-1.5">
-                        <div className="flex items-start gap-2">
-                          <svg className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                          </svg>
-                          <div className="flex-1">
-                            <p className="text-xs font-semibold text-blue-900">Cost Breakdown:</p>
-                            <p className="text-xs text-blue-700 mt-1">
-                              {costBreakdown.adTypeCost > 0 && `Ad Package: $${costBreakdown.adTypeCost}`}
-                              {costBreakdown.adTypeCost > 0 && costBreakdown.hasExtraImages && ' + '}
-                              {costBreakdown.hasExtraImages && `Extra Images: $${costBreakdown.extraImagesCost}`}
-                            </p>
-                          </div>
-                        </div>
+                      <div className="text-right">
+                        <span className={`text-2xl font-bold ${costBreakdown.isFree ? 'text-green-600' : 'text-primary'}`}>
+                          {costBreakdown.isFree ? 'FREE' : `${costBreakdown.currencySymbol}${costBreakdown.totalCost.toLocaleString()}`}
+                        </span>
+                        {!costBreakdown.isFree && (
+                          <p className="text-xs text-gray-500 mt-1">{costBreakdown.currency}</p>
+                        )}
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
             )}
@@ -429,7 +431,7 @@ const PaymentForAds = ({ onBack, onNext }) => {
                       {/* Placement Title */}
                       <div>
                         <h4 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">{placement.title}</h4>
-                        <p className="text-xs sm:text-sm text-gray-600">Your ad will be displayed with these features:</p>
+                        <p className="text-xs sm:text-sm text-gray-600">Duration: {selectedAdType.validdays} days</p>
                       </div>
 
                       {/* Features */}
@@ -445,34 +447,6 @@ const PaymentForAds = ({ onBack, onNext }) => {
                           </div>
                         ))}
                       </div>
-
-                      {/* Example Preview */}
-                      <div>
-                        <p className="text-xs sm:text-sm font-bold text-gray-700 uppercase tracking-wide mb-3">Preview Example:</p>
-                        {placement.example}
-                      </div>
-
-                      {/* Image Count Info */}
-                      {formDataFromRedux.images?.length > 0 && (
-                        <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
-                          <div className="flex items-start gap-2">
-                            <svg className="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-                            </svg>
-                            <div className="flex-1">
-                              <p className="text-xs font-semibold text-purple-900">Your Images</p>
-                              <p className="text-xs text-purple-700 mt-1">
-                                Total: {formDataFromRedux.images.length} image{formDataFromRedux.images.length !== 1 ? 's' : ''}
-                                {costBreakdown.hasExtraImages && (
-                                  <span className="text-orange-600 font-semibold ml-1">
-                                    ({extraImagesCount} paid)
-                                  </span>
-                                )}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
                     </>
                   );
                 })()}
@@ -504,14 +478,17 @@ const PaymentForAds = ({ onBack, onNext }) => {
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
             >
-              {costBreakdown.isFree ? 'Post Ad for Free →' : `Pay $${costBreakdown.totalCost} & Continue →`}
+              {costBreakdown.isFree 
+                ? 'Post Ad for Free →' 
+                : `Pay ${costBreakdown.currencySymbol}${costBreakdown.totalCost.toLocaleString()} & Continue →`
+              }
             </button>
           </div>
         </div>
 
         {/* Info Note */}
         <div className="text-center mt-4 sm:mt-6 text-gray-500 text-xs sm:text-sm px-4">
-          <p>💡 Choose a premium package for better visibility and faster sales</p>
+          <p>💡 Prices shown in {costBreakdown.currency} based on your selected location</p>
         </div>
       </div>
     </div>

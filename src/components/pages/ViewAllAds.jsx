@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import AdsCard from "../shared/card/AdsCard";
 import { FaTh, FaBars } from "react-icons/fa";
-import { useGetAllAdvertisementsAdsQuery, useGetAdvertisementsByCategoryQuery } from "../../features/postadsSlice";
+import { useGetAllAdvertisementsAdsQuery, useGetAdvertisementsByCategoryQuery,useGetAdvertisementsAdsByCountryQuery } from "../../features/postadsSlice";
 import { useNavigate, useParams } from "react-router-dom";
 import AdvertisementSkeleton from "../component/SkeletonLoading/advertisementSkeleton.jsx";
 
@@ -27,19 +27,28 @@ const ViewAllAds = () => {
 
   // ✅ Use slug-based query with optional country, category, and subcategory
   const {
-    data,
-    isLoading,
-    isError,
-    error,
-  } = categorySlug
-    ? useGetAdvertisementsByCategoryQuery({ 
-        countrySlug, 
-        categorySlug, 
-        subCategorySlug, 
-        page, 
-        limit: 12 
+  data,
+  isLoading,
+  isError,
+  error
+} = categorySlug
+    ? useGetAdvertisementsByCategoryQuery({
+        countrySlug,
+        categorySlug,
+        subCategorySlug,
+        page,
+        limit: 12
       })
-    : useGetAllAdvertisementsAdsQuery({ page, limit: 12 });
+    : countrySlug
+      ? useGetAdvertisementsAdsByCountryQuery({
+          countrySlug,
+          page,
+          limit: 12
+        })
+      : useGetAllAdvertisementsAdsQuery({
+          page,
+          limit: 12
+        });
 
   // Only navigate on critical errors like 404 for invalid routes
   useEffect(() => {
