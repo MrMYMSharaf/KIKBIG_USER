@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import AdsCard from "../shared/card/AdsCard";
 import { FaTh, FaBars } from "react-icons/fa";
-import { useGetAllAdvertisementsAdsQuery, useGetAdvertisementsByCategoryQuery,useGetAdvertisementsAdsByCountryQuery } from "../../features/postadsSlice";
+import { 
+  useGetAllAdvertisementsAdsQuery, 
+  useGetAdvertisementsByCategoryQuery,
+  useGetAdvertisementsAdsByCountryQuery 
+} from "../../features/postadsSlice";
 import { useNavigate, useParams } from "react-router-dom";
 import AdvertisementSkeleton from "../component/SkeletonLoading/advertisementSkeleton.jsx";
 
@@ -14,7 +18,9 @@ const ViewAllAds = () => {
   const observerTarget = useRef(null);
 
   const navigate = useNavigate();
-  const { countrySlug, categorySlug, subCategorySlug } = useParams();
+  
+  // ✅ Extract all params including mode
+  const { countrySlug, mode, categorySlug, subCategorySlug } = useParams();
 
   const sidebarAds = [
     "/ads/160_600.png",
@@ -25,15 +31,16 @@ const ViewAllAds = () => {
 
   const toggleLayout = (newLayout) => setLayout(newLayout);
 
-  // ✅ Use slug-based query with optional country, category, and subcategory
+  // ✅ FIXED: Now passes mode to the category query
   const {
-  data,
-  isLoading,
-  isError,
-  error
-} = categorySlug
+    data,
+    isLoading,
+    isError,
+    error
+  } = categorySlug
     ? useGetAdvertisementsByCategoryQuery({
         countrySlug,
+        mode: mode || 'viewallads', // ✅ Pass the mode from URL
         categorySlug,
         subCategorySlug,
         page,

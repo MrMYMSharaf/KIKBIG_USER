@@ -4,6 +4,9 @@ import { updateFormData, setExtraImagesCount,updateContact } from "../../feature
 import { useLanguageQuery } from "../../features/languageSlice";
 import { useCategoryQuery } from "../../features/categorySlice";
 import { useLocationQuery } from "../../features/locationSlice";
+import { Navigate } from "react-router-dom";
+import PhoneInput from 'react-phone-number-input';
+import 'react-phone-number-input/style.css';
 
 import LanguageSelect from "./_LanguageSelect";
 import LocationSelect from "./_LocationSelect";
@@ -11,17 +14,18 @@ import DescriptionEditor from "../component/DescriptionEditor";
 import ImageUpload from "../component/ImageUpload";
 import CategorySelect from "./_CategorySelect";
 
-import { useAuth } from "../../hooks/useAuth"
+
 
 const POSTANADS = ({ onBack, onNext }) => {
   const dispatch = useDispatch();
   const formData = useSelector((state) => state.adPost.formData);
+  const isAuthenticated = useSelector(
+  (state) => state.auth.isAuthenticated
+);
   
 
-  // 🔥 Use the auth hook to get user ID
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
-if (authLoading) return null; // wait until auth check is done
+// if (authLoading) return null; // wait until auth check is done
 if (!isAuthenticated) return <Navigate to="/auth" replace />;
 
 
@@ -173,11 +177,16 @@ const getAdSubTitle = () => {
     }));
   }, [dispatch, formData.specialQuestions]);
 
-  // ✅ Handle contact info updates
-const handleContactChange = useCallback((e) => {
-  const { name, value } = e.target;
-  dispatch(updateContact({ [name]: value }));
-}, [dispatch]);
+  // ✅ Handle contact info updates (for regular text inputs like email and telegram)
+  const handleContactChange = useCallback((e) => {
+    const { name, value } = e.target;
+    dispatch(updateContact({ [name]: value }));
+  }, [dispatch]);
+
+  // ✅ NEW: Handle phone input changes (for PhoneInput components)
+  const handlePhoneInputChange = useCallback((field, value) => {
+    dispatch(updateContact({ [field]: value || "" }));
+  }, [dispatch]);
 
 
   // FIXED: Handle location field changes with proper reset logic
@@ -286,10 +295,6 @@ const handleContactChange = useCallback((e) => {
   ]);
 
   const handleNext = () => {
-    if (!formData.userId) {
-      alert("User authentication error. Please login again.");
-      return;
-    }
 
     if (!formData.title?.trim()) {
       alert("Please enter a title for your ad");
@@ -346,6 +351,81 @@ const handleContactChange = useCallback((e) => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-gray-50 py-4 sm:py-8 px-3 sm:px-4">
+      <style>{`
+        /* Custom styles for PhoneInput in ad posting form */
+        .PhoneInput {
+          width: 100%;
+        }
+        
+        .PhoneInputInput {
+          width: 100%;
+          padding: 14px 16px;
+          border: 2px solid #e5e7eb;
+          border-radius: 12px;
+          font-size: 14px;
+          background-color: #ffffff;
+          transition: all 0.2s ease;
+          color: #111827;
+        }
+
+        @media (min-width: 640px) {
+          .PhoneInputInput {
+            font-size: 16px;
+          }
+        }
+        
+        .PhoneInputInput:hover {
+          border-color: #d1d5db;
+        }
+        
+        .PhoneInputInput:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+        
+        .PhoneInputInput::placeholder {
+          color: #9ca3af;
+        }
+        
+        .PhoneInputCountry {
+          padding-right: 12px;
+          margin-right: 12px;
+          border-right: 1px solid #e5e7eb;
+        }
+        
+        .PhoneInputCountryIcon {
+          width: 24px;
+          height: 18px;
+          box-shadow: 0 0 2px rgba(0, 0, 0, 0.1);
+          border-radius: 2px;
+        }
+        
+        .PhoneInputCountrySelect {
+          font-size: 14px;
+          padding: 4px;
+          border: none;
+          background: transparent;
+          cursor: pointer;
+          font-weight: 500;
+        }
+
+        @media (min-width: 640px) {
+          .PhoneInputCountrySelect {
+            font-size: 16px;
+          }
+        }
+        
+        .PhoneInputCountrySelect:focus {
+          outline: none;
+        }
+
+        .PhoneInputCountrySelectArrow {
+          color: #6b7280;
+          margin-left: 4px;
+        }
+      `}</style>
+
       <div className="max-w-4xl mx-auto">
         {/* Progress Steps */}
         <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6 border border-gray-100">
@@ -517,75 +597,73 @@ const handleContactChange = useCallback((e) => {
             />
           </div>
 
-          {/* Contact Information Section */}
-<div className="space-y-3 sm:space-y-4 pt-4 sm:pt-6 border-t-2 border-gray-100">
-  <div className="border-l-4 border-primary pl-3 sm:pl-4 py-1">
-    <h3 className="text-xl sm:text-2xl font-bold text-gray-900 font-playfair">Contact Information</h3>
-    <p className="text-xs sm:text-sm text-gray-500 mt-1">Provide at least one method for buyers to contact you</p>
-  </div>
+          {/* Contact Information Section - UPDATED with PhoneInput */}
+          <div className="space-y-3 sm:space-y-4 pt-4 sm:pt-6 border-t-2 border-gray-100">
+            <div className="border-l-4 border-primary pl-3 sm:pl-4 py-1">
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-900 font-playfair">Contact Information</h3>
+              <p className="text-xs sm:text-sm text-gray-500 mt-1">Provide at least one method for buyers to contact you</p>
+            </div>
 
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-    {/* Phone */}
-    <div className="space-y-2">
-      <label className="block text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wide">
-        Phone Number
-      </label>
-      <input
-        type="tel"
-        name="phone"
-        placeholder="Enter your phone number"
-        value={formData.contact?.phone || ""}
-        onChange={handleContactChange}
-        className="w-full px-3 sm:px-4 py-3 sm:py-3.5 text-sm sm:text-base border-2 border-gray-200 rounded-xl focus:border-primary focus:ring-4 focus:ring-blue-100 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 hover:border-gray-300"
-      />
-    </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+              {/* Phone with Country Code */}
+              <div className="space-y-2">
+                <label className="block text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wide">
+                  Phone Number
+                </label>
+                <PhoneInput
+                  international
+                  defaultCountry="LK"
+                  value={formData.contact?.phone || ""}
+                  onChange={(value) => handlePhoneInputChange('phone', value)}
+                  placeholder="Enter phone number"
+                />
+              </div>
 
-    {/* WhatsApp */}
-    <div className="space-y-2">
-      <label className="block text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wide">
-        WhatsApp
-      </label>
-      <input
-        type="tel"
-        name="whatsapp"
-        placeholder="Enter your WhatsApp number"
-        value={formData.contact?.whatsapp || ""}
-        onChange={handleContactChange}
-        className="w-full px-3 sm:px-4 py-3 sm:py-3.5 text-sm sm:text-base border-2 border-gray-200 rounded-xl focus:border-primary focus:ring-4 focus:ring-blue-100 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 hover:border-gray-300"
-      />
-    </div>
+              {/* WhatsApp with Country Code */}
+              <div className="space-y-2">
+                <label className="block text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wide">
+                  WhatsApp
+                </label>
+                <PhoneInput
+                  international
+                  defaultCountry="LK"
+                  value={formData.contact?.whatsapp || ""}
+                  onChange={(value) => handlePhoneInputChange('whatsapp', value)}
+                  placeholder="Enter WhatsApp number"
+                />
+              </div>
 
-    {/* Email */}
-    <div className="space-y-2">
-      <label className="block text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wide">
-        Email
-      </label>
-      <input
-        type="email"
-        name="email"
-        placeholder="Enter your email"
-        value={formData.contact?.email || ""}
-        onChange={handleContactChange}
-        className="w-full px-3 sm:px-4 py-3 sm:py-3.5 text-sm sm:text-base border-2 border-gray-200 rounded-xl focus:border-primary focus:ring-4 focus:ring-blue-100 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 hover:border-gray-300"
-      />
-    </div>
+              {/* Email */}
+              <div className="space-y-2">
+                <label className="block text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wide">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="Enter your email"
+                  value={formData.contact?.email || ""}
+                  onChange={handleContactChange}
+                  className="w-full px-3 sm:px-4 py-3 sm:py-3.5 text-sm sm:text-base border-2 border-gray-200 rounded-xl focus:border-primary focus:ring-4 focus:ring-blue-100 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 hover:border-gray-300"
+                />
+              </div>
 
-    {/* Telegram */}
-    <div className="space-y-2">
-      <label className="block text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wide">
-        Telegram
-      </label>
-      <input
-        type="text"
-        name="telegram"
-        placeholder="@username"
-        value={formData.contact?.telegram || ""}
-        onChange={handleContactChange}
-        className="w-full px-3 sm:px-4 py-3 sm:py-3.5 text-sm sm:text-base border-2 border-gray-200 rounded-xl focus:border-primary focus:ring-4 focus:ring-blue-100 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 hover:border-gray-300"
-      />
-    </div>
-  </div>
-</div>
+              {/* Telegram */}
+              <div className="space-y-2">
+                <label className="block text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wide">
+                  Telegram
+                </label>
+                <input
+                  type="text"
+                  name="telegram"
+                  placeholder="@username"
+                  value={formData.contact?.telegram || ""}
+                  onChange={handleContactChange}
+                  className="w-full px-3 sm:px-4 py-3 sm:py-3.5 text-sm sm:text-base border-2 border-gray-200 rounded-xl focus:border-primary focus:ring-4 focus:ring-blue-100 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 hover:border-gray-300"
+                />
+              </div>
+            </div>
+          </div>
 
 
           {/* Location Section */}

@@ -26,13 +26,11 @@ export const uploadAdData = async (adData) => {
     console.log("📤 uploadAdData called with:", adData);
 
     // ✅ Basic validations
-    if (!adData.userId) throw new Error("userId is required but missing");
     if (!adData.title) throw new Error("title is required but missing");
     if (!adData.description) throw new Error("description is required but missing");
     if (adData.price === undefined || adData.price === null) throw new Error("price is required but missing");
     if (!adData.category) throw new Error("category is required but missing");
     if (!adData.typeofads) throw new Error("typeofads is required but missing");
-    if (!adData.userType) console.warn("⚠️ userType not provided - backend will use default");
 
     // ✅ Convert images to base64
     let base64Images = [];
@@ -56,8 +54,6 @@ export const uploadAdData = async (adData) => {
 
     // ✅ Build payload
     const payload = {
-      userId: adData.userId,
-      usertype: adData.userType,
       title: adData.title,
       description: adData.description,
       price: Number(adData.price),

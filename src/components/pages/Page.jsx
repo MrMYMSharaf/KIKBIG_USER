@@ -1,337 +1,404 @@
-import React, { useState } from 'react';
-import { 
-  PlusCircle, 
-  Search, 
-  Users, 
-  Grid, 
-  List,
-  Filter,
-  Star,
-  Eye,
-  Crown
-} from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { PlusCircle, Search, Users, Grid, List, Filter, Star, Eye, Crown, MapPin, X, Award, Sparkles, Edit3, Trash2, Heart } from 'lucide-react';
 import { useNavigate } from "react-router-dom";
+import { useGetAllPagesQuery, useDeletePageMutation } from '../../features/pageApiSlice';
+import { useGetUserFollowedPagesQuery} from '../../features/page.flowwingSlice';
 
-const dummyPagesData = [
-  {
-    id: 1,
-    name: 'Tech Innovations',
-    followers: 5432,
-    category: 'Technology',
-    subcategory: 'Software',
-    image: 'https://picsum.photos/200/300?1',
-    isOwn: true,
-    isFollowing: true,
-    rating: 4.5,
-    views: 12500,
-    isSuperMember: true
-  },
-  {
-    id: 2,
-    name: 'Foodie Adventures',
-    followers: 2345,
-    category: 'Food & Dining',
-    subcategory: 'Restaurants',
-    image: 'https://picsum.photos/200/300?2',
-    isOwn: false,
-    isFollowing: false,
-    rating: 4.2,
-    views: 8900,
-    isSuperMember: false
-  },
-  {
-    id: 3,
-    name: 'Travel Explorers',
-    followers: 7890,
-    category: 'Travel',
-    subcategory: 'Adventure',
-    image: 'https://picsum.photos/200/300?3',
-    isOwn: false,
-    isFollowing: true,
-    rating: 4.8,
-    views: 15600,
-    isSuperMember: true
-  },
-  {
-    id: 4,
-    name: 'AI Research Hub',
-    followers: 6543,
-    category: 'Technology',
-    subcategory: 'AI & ML',
-    image: 'https://picsum.photos/200/300?4',
-    isOwn: false,
-    isFollowing: true,
-    rating: 4.7,
-    views: 11200,
-    isSuperMember: true
-  },
-  {
-    id: 5,
-    name: 'Home Cooking',
-    followers: 3210,
-    category: 'Food & Dining',
-    subcategory: 'Recipes',
-    image: 'https://picsum.photos/200/300?5',
-    isOwn: false,
-    isFollowing: false,
-    rating: 4.0,
-    views: 6700,
-    isSuperMember: false
-  },
-  {
-    id: 6,
-    name: 'Beach Destinations',
-    followers: 9876,
-    category: 'Travel',
-    subcategory: 'Beach',
-    image: 'https://picsum.photos/200/300?6',
-    isOwn: true,
-    isFollowing: true,
-    rating: 4.6,
-    views: 18900,
-    isSuperMember: true
-  }
-];
-
-const categories = {
-  'Technology': ['Software', 'Hardware', 'AI & ML', 'Cybersecurity'],
-  'Food & Dining': ['Restaurants', 'Recipes', 'Cafes', 'Street Food'],
-  'Travel': ['Adventure', 'Beach', 'Cultural', 'Budget Travel']
-};
-
-const Page = () => {
-  const [activeTab, setActiveTab] = useState('following');
-  const [viewMode, setViewMode] = useState('grid');
+const Pages = () => {
+  const navigate = useNavigate();
+  
+  // Fetch all pages from API
+  const { data: pagesData, isLoading, error } = useGetAllPagesQuery();
+  const [deletePage, { isLoading: deleting }] = useDeletePageMutation();
+  
+  // Fetch user's followed pages - the backend will use the JWT cookie to identify the user
+  const { data: followedPagesData, isLoading: followedLoading } = useGetUserFollowedPagesQuery(
+    { page: 1, limit: 100 }
+  );
+  
+  const [activeTab, setActiveTab] = useState('all');
+  const [viewMode, setViewMode] = useState('list');
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const navigate = useNavigate();
   
   // Filter states
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedSubcategory, setSelectedSubcategory] = useState('');
+  const [selectedPageType, setSelectedPageType] = useState('');
   const [minRating, setMinRating] = useState(0);
   const [sortBy, setSortBy] = useState('');
-  const [superMemberOnly, setSuperMemberOnly] = useState(false);
+  const [premiumOnly, setPremiumOnly] = useState(false);
 
   const createNewPage = () => {
-  navigate("/pages/create");
-};
+    navigate("/pages/create");
+  };
 
+  const viewPageDetail = (pageId) => {
+    navigate(`/page/${pageId}`)
+  };
 
-  const filteredPages = dummyPagesData.filter(page => {
-    const matchesSearch = page.name.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    let matchesTab = true;
-    switch (activeTab) {
-      case 'following':
-        matchesTab = page.isFollowing;
-        break;
-      case 'my':
-        matchesTab = page.isOwn;
-        break;
-      default:
-        matchesTab = true;
+  // Process pages data
+  const allPages = useMemo(() => {
+    if (!pagesData?.data) return [];
+    return pagesData.data;
+  }, [pagesData]);
+
+  // Get followed page IDs as a Set for quick lookup
+  const followedPageIds = useMemo(() => {
+    if (!followedPagesData?.pages) return new Set();
+    return new Set(followedPagesData.pages.map(page => page._id));
+  }, [followedPagesData]);
+
+  // Get current user's pages (backend should include isOwner flag or similar)
+  const myPages = useMemo(() => {
+    return allPages.filter(page => page.isOwner === true);
+  }, [allPages]);
+
+  // Get unique categories for filtering
+  const categories = useMemo(() => {
+    const cats = new Set();
+    allPages.forEach(page => {
+      if (page.category?.name) cats.add(page.category.name);
+    });
+    return Array.from(cats);
+  }, [allPages]);
+
+  // Get unique page types for filtering
+  const pageTypes = useMemo(() => {
+    const types = new Set();
+    allPages.forEach(page => {
+      if (page.pagetype?.name) types.add(page.pagetype.name);
+    });
+    return Array.from(types);
+  }, [allPages]);
+
+  // Filter and sort pages
+  const filteredPages = useMemo(() => {
+    let pages = [...allPages];
+
+    // Tab filtering
+    if (activeTab === 'following') {
+      // Filter to only show pages that user is following
+      pages = pages.filter(page => followedPageIds.has(page._id));
+    } else if (activeTab === 'my') {
+      // Show only pages owned by the current user
+      pages = myPages;
     }
 
-    const matchesCategory = !selectedCategory || page.category === selectedCategory;
-    const matchesSubcategory = !selectedSubcategory || page.subcategory === selectedSubcategory;
-    const matchesRating = page.rating >= minRating;
-    const matchesSuperMember = !superMemberOnly || page.isSuperMember;
-
-    return matchesSearch && matchesTab && matchesCategory && matchesSubcategory && matchesRating && matchesSuperMember;
-  }).sort((a, b) => {
-    switch (sortBy) {
-      case 'views':
-        return b.views - a.views;
-      case 'rating':
-        return b.rating - a.rating;
-      case 'followers':
-        return b.followers - a.followers;
-      default:
-        return 0;
+    // Search filtering
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      pages = pages.filter(page => 
+        page.title?.toLowerCase().includes(search) ||
+        page.description?.toLowerCase().includes(search) ||
+        page.category?.name?.toLowerCase().includes(search)
+      );
     }
-  });
+
+    // Category filtering
+    if (selectedCategory) {
+      pages = pages.filter(page => page.category?.name === selectedCategory);
+    }
+
+    // Page type filtering
+    if (selectedPageType) {
+      pages = pages.filter(page => page.pagetype?.name === selectedPageType);
+    }
+
+    // Rating filtering
+    if (minRating > 0) {
+      pages = pages.filter(page => (page.averageRating || 0) >= minRating);
+    }
+
+    // Premium filtering
+    if (premiumOnly) {
+      pages = pages.filter(page => 
+        page.pagetype?.name === 'Premium Page' || 
+        page.pagetype?.name === 'VIP Page'
+      );
+    }
+
+    // Sorting
+    if (sortBy === 'views') {
+      pages.sort((a, b) => (b.views || 0) - (a.views || 0));
+    } else if (sortBy === 'rating') {
+      pages.sort((a, b) => (b.averageRating || 0) - (a.averageRating || 0));
+    } else if (sortBy === 'followers') {
+      pages.sort((a, b) => (b.followersCount || 0) - (a.followersCount || 0));
+    } else if (sortBy === 'recent') {
+      pages.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+
+    return pages;
+  }, [allPages, activeTab, searchTerm, selectedCategory, selectedPageType, minRating, sortBy, premiumOnly, myPages, followedPageIds]);
 
   const clearFilters = () => {
     setSelectedCategory('');
-    setSelectedSubcategory('');
+    setSelectedPageType('');
     setMinRating(0);
     setSortBy('');
-    setSuperMemberOnly(false);
+    setPremiumOnly(false);
+    setSearchTerm('');
   };
 
   const activeFiltersCount = [
     selectedCategory,
-    selectedSubcategory,
+    selectedPageType,
     minRating > 0,
     sortBy,
-    superMemberOnly
+    premiumOnly,
+    searchTerm
   ].filter(Boolean).length;
 
+  // Get page type badge color
+  const getPageTypeBadge = (pageType) => {
+    const badges = {
+      'Basic Page': { color: 'bg-gray-100 text-gray-700', icon: Award },
+      'Standard Page': { color: 'bg-blue-100 text-blue-700', icon: Award },
+      'Premium Page': { color: 'bg-purple-100 text-purple-700', icon: Crown },
+      'VIP Page': { color: 'bg-yellow-100 text-yellow-700', icon: Sparkles }
+    };
+    return badges[pageType?.name] || badges['Basic Page'];
+  };
+
+  // Get location display
+  const getLocationDisplay = (location) => {
+    if (!location) return null;
+    const parts = [
+      location.townName,
+      location.districtName,
+      location.countryName
+    ].filter(Boolean);
+    return parts.slice(0, 2).join(', ');
+  };
+
+  // Loading state
+  if (isLoading || (activeTab === 'following' && followedLoading)) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex justify-center items-center h-96">
+            <div className="text-center">
+              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-gray-600 font-medium">Loading pages...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex justify-center items-center h-96">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <X className="w-8 h-8 text-red-500" />
+              </div>
+              <p className="text-gray-900 font-semibold mb-2">Failed to load pages</p>
+              <p className="text-gray-600 text-sm">{error.message || 'Please try again later'}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Get count for each tab
+  const myPagesCount = myPages.length;
+  const followingCount = followedPageIds.size;
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">My Pages</h1>
-          <button className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition"
-          onClick={createNewPage}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+          <div>
+            <h1 className="text-4xl font-black text-gray-900 mb-2 tracking-tight">
+              Discover Pages
+            </h1>
+            <p className="text-gray-600 font-medium">
+              Browse and manage your pages
+            </p>
+          </div>
+          <button 
+            className="flex items-center bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl font-semibold"
+            onClick={createNewPage}
           >
             <PlusCircle className="mr-2" size={20} />
             Create New Page
           </button>
         </div>
 
-        {/* Tabs and View Options */}
-        <div className="flex flex-wrap justify-between gap-4 mb-6">
-          {/* Tabs */}
-          <div className="flex space-x-4">
-            <button 
-              onClick={() => setActiveTab('following')}
-              className={`px-4 py-2 rounded-lg transition ${
-                activeTab === 'following' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'bg-white text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              Following Pages
-            </button>
-            
-            <button 
-              onClick={() => setActiveTab('all')}
-              className={`px-4 py-2 rounded-lg transition ${
-                activeTab === 'all' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'bg-white text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              All Pages
-            </button>
-           
-            <button 
-              onClick={() => setActiveTab('my')}
-              className={`px-4 py-2 rounded-lg transition ${
-                activeTab === 'my' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'bg-white text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              My Pages
-            </button>
-          </div>
-
-          {/* Search and View Mode */}
-          <div className="flex items-center space-x-4">
-            <div className="relative">
-              <input 
-                type="text" 
-                placeholder="Search pages..." 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border rounded-lg w-64"
-              />
-              <Search className="absolute left-3 top-3 text-gray-400" size={18} />
-            </div>
-            <button 
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 relative"
-            >
-              <Filter className="mr-2" size={20} />
-              Filters
-              {activeFiltersCount > 0 && (
-                <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  {activeFiltersCount}
+        {/* Tabs and Controls */}
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4 mb-6">
+          <div className="flex flex-col lg:flex-row justify-between gap-4">
+            {/* Tabs */}
+            <div className="flex flex-wrap gap-2">
+              <button 
+                onClick={() => setActiveTab('all')}
+                className={`px-5 py-2.5 rounded-xl font-semibold transition-all ${
+                  activeTab === 'all' 
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                All Pages
+                <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+                  activeTab === 'all' ? 'bg-white/20' : 'bg-gray-200'
+                }`}>
+                  {allPages.length}
                 </span>
-              )}
-            </button>
-            <div className="flex space-x-2">
+              </button>
+              
               <button 
-                onClick={() => setViewMode('grid')}
-                className={`p-2 rounded-lg ${
-                  viewMode === 'grid' 
-                    ? 'bg-blue-500 text-white' 
-                    : 'bg-white text-gray-700 hover:bg-gray-100'
+                onClick={() => setActiveTab('following')}
+                className={`px-5 py-2.5 rounded-xl font-semibold transition-all flex items-center ${
+                  activeTab === 'following' 
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                <Grid size={20} />
+                <Heart className="w-4 h-4 mr-2" />
+                Following
+                <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+                  activeTab === 'following' ? 'bg-white/20' : 'bg-gray-200'
+                }`}>
+                  {followingCount}
+                </span>
               </button>
+             
               <button 
-                onClick={() => setViewMode('list')}
-                className={`p-2 rounded-lg ${
-                  viewMode === 'list' 
-                    ? 'bg-blue-500 text-white' 
-                    : 'bg-white text-gray-700 hover:bg-gray-100'
+                onClick={() => setActiveTab('my')}
+                className={`px-5 py-2.5 rounded-xl font-semibold transition-all ${
+                  activeTab === 'my' 
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                <List size={20} />
+                My Pages
+                <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+                  activeTab === 'my' ? 'bg-white/20' : 'bg-gray-200'
+                }`}>
+                  {myPagesCount}
+                </span>
               </button>
+            </div>
+
+            {/* Search and View Mode */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="relative flex-grow lg:flex-grow-0">
+                <input 
+                  type="text" 
+                  placeholder="Search pages..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-11 pr-4 py-2.5 border-2 border-gray-200 rounded-xl w-full lg:w-64 focus:border-blue-500 focus:outline-none font-medium"
+                />
+                <Search className="absolute left-3.5 top-3 text-gray-400" size={20} />
+              </div>
+              
+              <button 
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center px-4 py-2.5 bg-gray-100 border-2 border-gray-200 rounded-xl hover:bg-gray-200 font-semibold transition-all relative"
+              >
+                <Filter className="mr-2" size={20} />
+                Filters
+                {activeFiltersCount > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-xs rounded-full w-6 h-6 flex items-center justify-center font-bold shadow-lg">
+                    {activeFiltersCount}
+                  </span>
+                )}
+              </button>
+              
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setViewMode('grid')}
+                  className={`p-2.5 rounded-xl transition-all ${
+                    viewMode === 'grid' 
+                      ? 'bg-blue-600 text-white shadow-lg' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <Grid size={20} />
+                </button>
+                <button 
+                  onClick={() => setViewMode('list')}
+                  className={`p-2.5 rounded-xl transition-all ${
+                    viewMode === 'list' 
+                      ? 'bg-blue-600 text-white shadow-lg' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <List size={20} />
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Filters Panel */}
         {showFilters && (
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Filters</h3>
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 mb-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Filters</h3>
               <button 
                 onClick={clearFilters}
-                className="text-blue-500 hover:text-blue-600 text-sm"
+                className="text-blue-600 hover:text-blue-700 text-sm font-semibold"
               >
                 Clear All
               </button>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Category Filter */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
                   Category
                 </label>
                 <select 
                   value={selectedCategory}
-                  onChange={(e) => {
-                    setSelectedCategory(e.target.value);
-                    setSelectedSubcategory('');
-                  }}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
                 >
                   <option value="">All Categories</option>
-                  {Object.keys(categories).map(cat => (
+                  {categories.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
               </div>
 
-              {/* Subcategory Filter */}
+              {/* Page Type Filter */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Subcategory
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Page Type
                 </label>
                 <select 
-                  value={selectedSubcategory}
-                  onChange={(e) => setSelectedSubcategory(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  disabled={!selectedCategory}
+                  value={selectedPageType}
+                  onChange={(e) => setSelectedPageType(e.target.value)}
+                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
                 >
-                  <option value="">All Subcategories</option>
-                  {selectedCategory && categories[selectedCategory].map(subcat => (
-                    <option key={subcat} value={subcat}>{subcat}</option>
+                  <option value="">All Types</option>
+                  {pageTypes.map(type => (
+                    <option key={type} value={type}>{type}</option>
                   ))}
                 </select>
               </div>
 
               {/* Sort By Filter */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
                   Sort By
                 </label>
                 <select 
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
                 >
                   <option value="">Default</option>
+                  <option value="recent">Most Recent</option>
                   <option value="views">Most Viewed</option>
                   <option value="rating">Highest Rating</option>
                   <option value="followers">Most Followers</option>
@@ -340,7 +407,7 @@ const Page = () => {
 
               {/* Minimum Rating Filter */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
                   Minimum Rating: {minRating} ★
                 </label>
                 <input 
@@ -350,109 +417,256 @@ const Page = () => {
                   step="0.5"
                   value={minRating}
                   onChange={(e) => setMinRating(parseFloat(e.target.value))}
-                  className="w-full"
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                 />
               </div>
+            </div>
 
-              {/* Super Member Filter */}
-              <div className="flex items-center pt-6">
-                <input 
-                  type="checkbox"
-                  id="superMember"
-                  checked={superMemberOnly}
-                  onChange={(e) => setSuperMemberOnly(e.target.checked)}
-                  className="w-4 h-4 text-blue-500 rounded focus:ring-2 focus:ring-blue-500"
-                />
-                <label htmlFor="superMember" className="ml-2 text-sm font-medium text-gray-700 flex items-center">
-                  <Crown className="w-4 h-4 mr-1 text-yellow-500" />
-                  Super Members Only
-                </label>
-              </div>
+            {/* Premium Filter */}
+            <div className="flex items-center pt-4">
+              <input 
+                type="checkbox"
+                id="premiumOnly"
+                checked={premiumOnly}
+                onChange={(e) => setPremiumOnly(e.target.checked)}
+                className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              />
+              <label htmlFor="premiumOnly" className="ml-3 text-sm font-bold text-gray-700 flex items-center cursor-pointer">
+                <Crown className="w-5 h-5 mr-2 text-yellow-500" />
+                Premium Pages Only
+              </label>
             </div>
           </div>
         )}
 
         {/* Results Count */}
-        <div className="mb-4 text-sm text-gray-600">
-          Showing {filteredPages.length} page{filteredPages.length !== 1 ? 's' : ''}
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-sm font-semibold text-gray-600">
+            Showing <span className="text-gray-900">{filteredPages.length}</span> page{filteredPages.length !== 1 ? 's' : ''}
+          </p>
+          {activeFiltersCount > 0 && (
+            <button
+              onClick={clearFilters}
+              className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
 
         {/* Pages Grid/List */}
-        <div className={`${viewMode === 'grid' ? 'grid md:grid-cols-3 gap-6' : 'space-y-4'}`}>
-          {filteredPages.length > 0 ? (
-            filteredPages.map((page) => (
-              <div 
-                key={page.id} 
-                className={`bg-white rounded-xl shadow-lg overflow-hidden 
-                  transform transition hover:scale-105 hover:shadow-xl cursor-pointer relative
-                  ${viewMode === 'list' ? 'flex items-center' : ''}`}
-              >
-                {/* Super Member Badge */}
-                {page.isSuperMember && (
-                  <div className="absolute top-2 right-2 bg-yellow-500 text-white px-2 py-1 rounded-full text-xs flex items-center z-10">
-                    <Crown className="w-3 h-3 mr-1" />
-                    Super
-                  </div>
-                )}
-
-                {/* Page Image */}
-                <div className={viewMode === 'grid' ? '' : 'w-48 flex-shrink-0'}>
-                  <img 
-                    src={page.image} 
-                    alt={page.name} 
-                    className={`w-full ${viewMode === 'grid' ? 'h-48' : 'h-full'} object-cover`}
-                  />
-                </div>
-
-                {/* Page Details */}
-                <div className={`p-4 ${viewMode === 'list' ? 'flex-grow' : ''}`}>
-                  <div>
-                    <h2 className="text-xl font-bold mb-2">{page.name}</h2>
+        {filteredPages.length > 0 ? (
+          <div className={`${
+            viewMode === 'grid' 
+              ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' 
+              : 'space-y-4'
+          }`}>
+            {filteredPages.map((page) => {
+              const badge = getPageTypeBadge(page.pagetype);
+              const BadgeIcon = badge.icon;
+              const isPremium = page.pagetype?.name === 'Premium Page' || page.pagetype?.name === 'VIP Page';
+              const isMyPage = page.isOwner === true;
+              
+              return (
+                <div 
+                  key={page._id}
+                  onClick={() => viewPageDetail(page._id)}
+                  className={`bg-white rounded-2xl shadow-md hover:shadow-2xl overflow-hidden 
+                    transform transition-all duration-300 hover:-translate-y-1 cursor-pointer 
+                    border-2 border-transparent hover:border-blue-300 relative
+                    ${viewMode === 'list' ? 'flex items-stretch' : ''}`}
+                >
+                  {/* Page Image */}
+                  <div className={`relative group ${viewMode === 'grid' ? '' : 'w-80 flex-shrink-0'}`}>
+                    <div
+                      className={`
+                        relative overflow-hidden bg-gradient-to-br from-blue-100 to-indigo-100
+                        ${viewMode === 'grid' ? 'h-[220px]' : 'h-[180px] w-[320px]'}
+                      `}
+                    >
+                      {page.cover_image ? (
+                        <img 
+                          src={page.cover_image} 
+                          alt={page.title} 
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Grid className="w-16 h-16 text-blue-300" />
+                        </div>
+                      )}
+                    </div>
                     
-                    {/* Stats Row */}
-                    <div className="flex items-center space-x-4 text-gray-500 text-sm mb-2">
-                      <div className="flex items-center">
-                        <Users className="w-4 h-4 mr-1" />
-                        <span>{page.followers}</span>
+                    {/* Edit/Delete Buttons Overlay for My Pages */}
+                    {isMyPage && (
+                      <>
+                        {/* My Page Badge */}
+                        <div className="absolute top-3 left-3 bg-green-600 text-white px-3 py-1.5 rounded-full text-xs font-black flex items-center shadow-lg z-10">
+                          <Award className="w-3 h-3 mr-1" />
+                          MY PAGE
+                        </div>
+                        
+                        {/* Action Buttons */}
+                        <div className="absolute top-3 right-3 flex gap-2 z-20">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/pages/${page._id}/edit`);
+                            }}
+                            className="bg-blue-600 text-white p-2.5 rounded-lg shadow-lg hover:bg-blue-700 transition-all transform hover:scale-110"
+                            title="Edit Page"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Are you sure you want to delete "${page.title}"? This action cannot be undone.`)) {
+                                try {
+                                  await deletePage(page._id).unwrap();
+                                  alert('Page deleted successfully!');
+                                } catch (error) {
+                                  console.error('Delete error:', error);
+                                  alert('Failed to delete page: ' + (error.data?.message || error.message));
+                                }
+                              }
+                            }}
+                            disabled={deleting}
+                            className="bg-red-600 text-white p-2.5 rounded-lg shadow-lg hover:bg-red-700 transition-all transform hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Delete Page"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                    
+                    {/* Premium Badge */}
+                    {isPremium && !isMyPage && (
+                      <div className="absolute top-3 left-3 bg-gradient-to-r from-yellow-400 to-yellow-600 text-white px-3 py-1.5 rounded-full text-xs font-black flex items-center shadow-lg z-10">
+                        <Crown className="w-4 h-4 mr-1" />
+                        Premium
                       </div>
-                      <div className="flex items-center">
-                        <Eye className="w-4 h-4 mr-1" />
-                        <span>{page.views.toLocaleString()}</span>
+                    )}
+
+                    {/* Following Badge */}
+                    {!isMyPage && followedPageIds.has(page._id) && (
+                      <div className="absolute top-3 right-3 bg-red-500 text-white px-3 py-1.5 rounded-full text-xs font-black flex items-center shadow-lg z-10">
+                        <Heart className="w-3 h-3 mr-1 fill-current" />
+                        Following
                       </div>
-                      <div className="flex items-center text-yellow-500">
-                        <Star className="w-4 h-4 mr-1 fill-current" />
-                        <span>{page.rating}</span>
+                    )}
+
+                    {/* Logo overlay */}
+                    {page.logo_image && viewMode === 'grid' && (
+                      <div className="absolute -bottom-8 left-6">
+                        <div className="w-16 h-16 rounded-full border-4 border-white bg-white overflow-hidden shadow-xl">
+                          <img 
+                            src={page.logo_image} 
+                            alt={page.title} 
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Page Details */}
+                  <div className={`p-6 ${viewMode === 'list' ? 'flex-grow flex flex-col justify-between' : 'pt-10'}`}>
+                    <div>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-grow">
+                          <h2 className={`font-black text-gray-900 mb-2 ${viewMode === 'list' ? 'text-2xl' : 'text-xl'} line-clamp-1`}>
+                            {page.title}
+                          </h2>
+                          
+                          {/* Page Type Badge */}
+                          <span className={`inline-flex items-center ${badge.color} text-xs px-3 py-1 rounded-full font-bold`}>
+                            <BadgeIcon className="w-3 h-3 mr-1" />
+                            {page.pagetype?.name || 'Basic'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      {page.description && (
+                        <p className={`text-gray-600 text-sm mb-4 font-medium ${viewMode === 'list' ? 'line-clamp-3' : 'line-clamp-2'}`}>
+                          {page.description}
+                        </p>
+                      )}
+                      
+                      {/* Stats Row */}
+                      <div className="flex items-center gap-4 text-gray-600 text-sm mb-4 font-semibold">
+                        <div className="flex items-center">
+                          <Users className="w-4 h-4 mr-1 text-blue-500" />
+                          <span>{page.followersCount || 0}</span>
+                        </div>
+                        <div className="flex items-center">
+                          <Eye className="w-4 h-4 mr-1 text-purple-500" />
+                          <span>{page.views || 0}</span>
+                        </div>
+                        <div className="flex items-center text-yellow-600">
+                          <Star className="w-4 h-4 mr-1 fill-current" />
+                          <span>{(page.averageRating || 0).toFixed(1)}</span>
+                        </div>
                       </div>
                     </div>
                     
-                    {/* Category */}
+                    {/* Category & Location */}
                     <div className="flex flex-wrap gap-2">
-                      <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded">
-                        {page.category}
-                      </span>
-                      <span className="bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded">
-                        {page.subcategory}
-                      </span>
+                      {page.category?.name && (
+                        <span className="bg-blue-100 text-blue-700 text-xs px-3 py-1 rounded-full font-bold">
+                          {page.category.name}
+                        </span>
+                      )}
+                      {page.childCategory?.name && (
+                        <span className="bg-gray-100 text-gray-700 text-xs px-3 py-1 rounded-full font-bold">
+                          {page.childCategory.name}
+                        </span>
+                      )}
+                      {getLocationDisplay(page.location) && (
+                        <span className="flex items-center bg-gray-100 text-gray-700 text-xs px-3 py-1 rounded-full font-bold">
+                          <MapPin className="w-3 h-3 mr-1" />
+                          {getLocationDisplay(page.location)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
-              </div>
-            ))
-          ) : (
-            <div className="col-span-full text-center py-12 text-gray-500">
-              <p className="text-lg mb-2">No pages found</p>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="col-span-full text-center py-20 bg-white rounded-2xl shadow-md border border-gray-200">
+            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              {activeTab === 'following' ? (
+                <Heart className="w-10 h-10 text-gray-400" />
+              ) : (
+                <Search className="w-10 h-10 text-gray-400" />
+              )}
+            </div>
+            <p className="text-xl font-bold text-gray-900 mb-2">
+              {activeTab === 'following' ? 'No followed pages yet' : 'No pages found'}
+            </p>
+            <p className="text-gray-600 mb-6 font-medium">
+              {activeTab === 'following' 
+                ? 'Start following pages to see them here' 
+                : 'Try adjusting your filters or search term'}
+            </p>
+            {activeFiltersCount > 0 && (
               <button 
                 onClick={clearFilters}
-                className="text-blue-500 hover:text-blue-600 text-sm"
+                className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition-all font-semibold shadow-lg"
               >
-                Clear filters to see more results
+                Clear all filters
               </button>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
-export default Page;
+export default Pages;
+

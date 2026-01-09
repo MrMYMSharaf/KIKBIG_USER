@@ -1,21 +1,23 @@
+// features/paymentApiSlice.js
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 
 export const paymentApi = createApi({
-  reducerPath: "paymentApi",
-  baseQuery: fetchBaseQuery({
-    baseUrl: "http://localhost:4000/payment", // backend route
+  reducerPath: 'paymentApi',
+  baseQuery: fetchBaseQuery({ 
+    baseUrl: 'http://localhost:4000',
+    credentials: 'include',
   }),
   endpoints: (builder) => ({
     startPayment: builder.mutation({
       query: (paymentDetails) => ({
-        url: "/start",
+        url: "/payment/start", // ✅ Fixed: was "/start"
         method: "POST",
         body: paymentDetails,
       }),
     }),
     verifyPayment: builder.mutation({
       query: (data) => ({
-        url: "/verify",
+        url: "/payment/verify", // ✅ Fixed: was "/verify"
         method: "POST",
         body: data,
       }),

@@ -1,52 +1,101 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import {
-  Store,
-  FileText,
-  MapPin,
-  Image as ImageIcon,
-  Phone,
-  Share2,
-  CheckCircle,
-  AlertCircle,
-  X,
-  Upload,
-  Globe,
-  Edit3,
-  Camera,
-  Save,
-  ChevronDown,
-  Tag,
-  Users,
-  Star,
-  MessageCircle,
-  Heart,
-  Send,
-  Bookmark,
-  MoreHorizontal,
-} from 'lucide-react';
+import {Store,FileText,MapPin,Image as ImageIcon,Phone,Share2,CheckCircle,AlertCircle,X,Globe,Edit3,Camera,Save,Tag,Users,Star,Send,Award,Crown,Gem} from 'lucide-react';
+import PhoneInput from 'react-phone-number-input';
+import 'react-phone-number-input/style.css';
+import './PhoneInputStyles.css';
+import { isValidPhoneNumber } from 'react-phone-number-input';
 
 // Redux
-import {
-  setPageType,
-  updateFormData,
-  updateNestedFormData,
-  setErrors,
-  clearErrors,
-  resetPageCreate,
-  addTag,
-  removeTag,
-  addImage,
-  removeImage,
-} from '../../features/redux/pagecreationSlice';
+import {setPageType,updateFormData,updateNestedFormData,resetPageCreate,addTag,removeTag} from '../../../features/redux/pagecreationSlice.js';
 
 // RTK Query
-import { useGetPageTypesQuery } from '../../features/pagetypeApi';
-import { useCategoryQuery } from '../../features/categorySlice';
-import { useLanguageQuery } from '../../features/languageSlice';
-import { useLocationQuery } from '../../features/locationSlice';
-import { useCreatePageMutation } from '../../features/pageApiSlice';
+import { useGetPageTypesQuery } from '../../../features/pagetypeApi.js';
+import { useCategoryQuery } from '../../../features/categorySlice.js';
+import { useLanguageQuery } from '../../../features/languageSlice.js';
+import { useLocationQuery } from '../../../features/locationSlice.js';
+import { useCreatePageMutation } from '../../../features/pageApiSlice.js';
+import { useGetAllImagePricesQuery } from '../../../features/page.imagePriceApi.js';
+
+// Components
+import LocationSelect from '../../component/_Location.page.jsx';
+import GalleryWithPricing from '../../component/page/Gallerywithpricing.jsx';
+import PageCreationConfirmationModal from '../PageCreationConfirmationModal.jsx';
+
+// Utils
+import { calculateTotalPageCost } from '../../../functions/calculatePageCost.js';
+
+const getCurrencyFromLocation = (location) => {
+  if (!location || !location.countryName) {
+    return { code: 'USD', symbol: '$', name: 'US Dollar', countryCode: 'US' };
+  }
+  
+  const country = location.countryName.toLowerCase();
+  
+  if (country.includes('sri lanka') || country.includes('lanka')) {
+    return { code: 'LKR', symbol: 'Rs.', name: 'Sri Lankan Rupee', countryCode: 'LK' };
+  }
+  if (country.includes('australia')) {
+    return { code: 'AUD', symbol: 'A$', name: 'Australian Dollar', countryCode: 'AU' };
+  }
+  if (country.includes('india')) {
+    return { code: 'INR', symbol: '₹', name: 'Indian Rupee', countryCode: 'IN' };
+  }
+  if (country.includes('united states') || country.includes('usa') || country.includes('america')) {
+    return { code: 'USD', symbol: '$', name: 'US Dollar', countryCode: 'US' };
+  }
+  
+  return { code: 'USD', symbol: '$', name: 'US Dollar', countryCode: 'US' };
+};
+
+const getPriceForCountry = (prices, currencyConfig) => {
+  const countryCode = currencyConfig?.countryCode || 'US';
+  
+  const pricesObj = prices instanceof Map ? Object.fromEntries(prices) : prices;
+  
+  const currencyCodeMap = {
+    'US': 'USD',
+    'LK': 'LK',
+    'AU': 'AUD',
+    'IN': 'INR',
+    'AE': 'AED'
+  };
+  
+  const currencyCode = currencyCodeMap[countryCode] || countryCode;
+  
+  if (pricesObj?.[countryCode]) {
+    return pricesObj[countryCode];
+  }
+  if (pricesObj?.[currencyCode]) {
+    return pricesObj[currencyCode];
+  }
+  if (pricesObj?.LK) {
+    return pricesObj.LK;
+  }
+  if (pricesObj?.US) {
+    return pricesObj.US;
+  }
+  if (pricesObj?.USD) {
+    return pricesObj.USD;
+  }
+  
+  const firstPrice = Object.values(pricesObj || {})[0];
+  return firstPrice || { price: 0, gateway: 'stripe' };
+};
+
+// Icon mapping for page types
+const PAGE_TYPE_ICONS = {
+  'Basic Page': { icon: FileText, color: 'bg-gray-500', gradient: 'from-gray-400 to-gray-600' },
+  'Standard Page': { icon: Award, color: 'bg-blue-500', gradient: 'from-blue-400 to-blue-600' },
+  'Premium Page': { icon: Crown, color: 'bg-purple-500', gradient: 'from-purple-400 to-purple-600' },
+  'VIP Page': { icon: Gem, color: 'bg-yellow-500', gradient: 'from-yellow-400 to-yellow-600' },
+};
+
+const getPageTypeIcon = (pageTypeName) => {
+  const iconData = PAGE_TYPE_ICONS[pageTypeName] || PAGE_TYPE_ICONS['Basic Page'];
+  return iconData;
+};
 
 // Skeleton Components
 const SkeletonBox = ({ className = '', onClick }) => (
@@ -100,28 +149,70 @@ const Page_create = () => {
   
   const { pageType, formData, errors } = useSelector((state) => state.pageCreate);
   const { user } = useSelector((state) => state.auth);
-  const { country } = useSelector((state) => state.country);
+  const currencyConfig = getCurrencyFromLocation(formData.location);
 
   // RTK Queries
   const { data: pageTypesData, isLoading: loadingPageTypes } = useGetPageTypesQuery();
   const { data: categoriesData, isLoading: loadingCategories } = useCategoryQuery();
   const { data: languagesData } = useLanguageQuery();
-  const { data: locationsData } = useLocationQuery(country);
+  const { data: geoLocationsData, isLoading: loadingLocations } = useLocationQuery();
+  const { data: imagePricesData } = useGetAllImagePricesQuery();
 
   // Mutation
   const [createPage, { isLoading: creating }] = useCreatePageMutation();
+
+  // ✅ NEW: Track payment processing state
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   // Local state for modals
   const [editingSection, setEditingSection] = useState(null);
   const [currentTag, setCurrentTag] = useState('');
   const [activeTab, setActiveTab] = useState('About');
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+  const [costData, setCostData] = useState(null);
   const [imagePreview, setImagePreview] = useState({
     cover: null,
     logo: null,
     gallery: [],
   });
 
-  // Convert base64 to preview URL
+  // State for subcategory management
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [availableSubcategories, setAvailableSubcategories] = useState([]);
+  const [selectedSubcategory, setSelectedSubcategory] = useState(null);
+
+  // Update subcategories when category changes
+  useEffect(() => {
+    if (formData.category && categoriesData?.data) {
+      const category = categoriesData.data.find(cat => cat._id === formData.category);
+      if (category) {
+        setSelectedCategory(category);
+        setAvailableSubcategories(category.children || []);
+        
+        if (selectedSubcategory && !category.children?.find(sub => sub._id === selectedSubcategory)) {
+          setSelectedSubcategory(null);
+          dispatch(updateFormData({ childCategory: null }));
+        }
+      }
+    } else {
+      setSelectedCategory(null);
+      setAvailableSubcategories([]);
+      setSelectedSubcategory(null);
+    }
+  }, [formData.category, categoriesData]);
+
+  const getCategoryDisplayName = () => {
+    if (!formData.category) return null;
+    const category = categoriesData?.data?.find(c => c._id === formData.category);
+    return category?.name;
+  };
+
+  const getSubcategoryDisplayName = () => {
+    if (!formData.childCategory || !selectedCategory) return null;
+    const subcategory = selectedCategory.children?.find(sub => sub._id === formData.childCategory);
+    return subcategory?.name;
+  };
+
   const convertToBase64 = (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -131,7 +222,6 @@ const Page_create = () => {
     });
   };
 
-  // Handle image upload
   const handleImageUpload = async (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -145,19 +235,12 @@ const Page_create = () => {
       } else if (type === 'logo') {
         dispatch(updateFormData({ logo_image: base64 }));
         setImagePreview({ ...imagePreview, logo: base64 });
-      } else if (type === 'gallery') {
-        dispatch(addImage(base64));
-        setImagePreview({ 
-          ...imagePreview, 
-          gallery: [...imagePreview.gallery, base64] 
-        });
       }
     } catch (error) {
       console.error('Error converting image:', error);
     }
   };
 
-  // Handle tag input
   const handleAddTag = (e) => {
     if (e.key === 'Enter' && currentTag.trim()) {
       dispatch(addTag(currentTag.trim()));
@@ -165,7 +248,6 @@ const Page_create = () => {
     }
   };
 
-  // Handle form submission
   const handleSubmit = async () => {
     // Validate required fields
     if (!pageType) {
@@ -188,17 +270,82 @@ const Page_create = () => {
       setEditingSection('basic');
       return;
     }
+    if (availableSubcategories.length > 0 && !formData.childCategory) {
+      alert('Please select a subcategory');
+      setEditingSection('basic');
+      return;
+    }
 
-    try {
-      const result = await createPage(formData).unwrap();
-      alert('Page created successfully!');
-      dispatch(resetPageCreate());
-      navigate('/pages');
-    } catch (error) {
-      console.error('Failed to create page:', error);
-      alert('Failed to create page. Please try again.');
+    const calculatedCost = calculateTotalPageCost({
+      pageType,
+      imageCount: imagePreview.gallery.length,
+      imagePricingPlans: imagePricesData?.data || [],
+      currencyConfig
+    });
+
+    setCostData(calculatedCost);
+    setShowConfirmationModal(true);
+  };
+
+  // ✅ UPDATED: Handle confirmation modal action with payment state
+  const handleConfirmationAction = async (action, paymentSuccess = false) => {
+    if (action === 'create') {
+      // ✅ If payment was required and successful, or if it's free
+      if (paymentSuccess || costData?.isFree) {
+        try {
+          const cleanLocation = {};
+          Object.keys(formData.location).forEach(key => {
+            const value = formData.location[key];
+            if (value && value !== '' && value !== null) {
+              cleanLocation[key] = value;
+            }
+          });
+
+          const payload = {
+            ...formData,
+            location: cleanLocation,
+            pagetype: pageType?._id
+          };
+
+          delete payload.userId;
+
+          console.log('📤 Submitting page creation payload:', payload);
+
+          const result = await createPage(payload).unwrap();
+          
+          console.log('✅ Page created successfully:', result);
+          
+          // Close modal first
+          setShowConfirmationModal(false);
+          setIsProcessingPayment(false);
+          
+          // Show success message
+          alert('Page created successfully!');
+          
+          // Reset form and navigate
+          dispatch(resetPageCreate());
+          navigate('/pages');
+        } catch (error) {
+          console.error('❌ Failed to create page:', error);
+          setIsProcessingPayment(false);
+          
+          if (error.data?.message) {
+            alert(`Failed to create page: ${error.data.message}`);
+          } else if (error.message) {
+            alert(`Failed to create page: ${error.message}`);
+          } else {
+            alert('Failed to create page. Please try again.');
+          }
+        }
+      }
     }
   };
+
+  const currentPageTypeIcon = pageType ? getPageTypeIcon(pageType.name) : null;
+  const PageTypeIconComponent = currentPageTypeIcon?.icon;
+
+  // ✅ Calculate if button should be disabled
+  const isSubmitDisabled = creating || isProcessingPayment;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -207,6 +354,16 @@ const Page_create = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Your Page</h1>
           <p className="text-gray-600">Click on any section to edit and customize</p>
+          
+          <div className="mt-2 inline-flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1 rounded-lg text-sm">
+            <Globe className="w-4 h-4" />
+            <span className="font-semibold">
+              Pricing in {currencyConfig.name} ({currencyConfig.symbol})
+            </span>
+            {!formData.location.countryName && (
+              <span className="text-xs opacity-75 ml-2">• Add location to change currency</span>
+            )}
+          </div>
         </div>
 
         {/* Page Preview/Editor */}
@@ -321,10 +478,20 @@ const Page_create = () => {
                   </div>
                 )}
 
-                {/* Page Type Badge */}
+                {/* Page Type Badge with Icon */}
                 {pageType ? (
-                  <div className="inline-flex items-center gap-2 bg-[#00008F]/10 text-[#00008F] px-4 py-2 rounded-lg text-sm font-semibold mb-3">
+                  <div 
+                    onClick={() => setEditingSection('pageType')}
+                    className={`inline-flex items-center gap-2 bg-gradient-to-r ${currentPageTypeIcon?.gradient} text-white px-4 py-2 rounded-lg text-sm font-semibold mb-3 shadow-md cursor-pointer hover:shadow-lg transition-all`}
+                  >
+                    {PageTypeIconComponent && <PageTypeIconComponent className="w-5 h-5" />}
                     {pageType.name}
+                    <span className="ml-2 bg-white/20 px-2 py-0.5 rounded">
+                      {(() => {
+                        const priceInfo = getPriceForCountry(pageType.prices, currencyConfig);
+                        return priceInfo.price === 0 ? 'Free' : `${currencyConfig.symbol}${priceInfo.price}`;
+                      })()}
+                    </span>
                   </div>
                 ) : (
                   <button
@@ -341,21 +508,29 @@ const Page_create = () => {
                   onClick={() => setEditingSection('location')}
                 >
                   <MapPin className="w-4 h-4" />
-                  {formData.location.town || formData.location.district ? (
-                    <span className="text-sm">
-                      {[
-                        formData.location.town && locationsData?.data?.towns?.find(t => t._id === formData.location.town)?.name,
-                        formData.location.district && locationsData?.data?.districts?.find(d => d._id === formData.location.district)?.name,
-                      ].filter(Boolean).join(', ')}
-                    </span>
+                  {formData.location.townName || formData.location.districtName || formData.location.countryName ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">
+                        {[
+                          formData.location.villageName,
+                          formData.location.townName,
+                          formData.location.municipalityName,
+                          formData.location.districtName,
+                          formData.location.stateName,
+                          formData.location.countryName,
+                        ].filter(Boolean).slice(0, 2).join(', ')}
+                      </span>
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">
+                        {currencyConfig.code}
+                      </span>
+                    </div>
                   ) : (
-                    <span className="text-sm text-gray-400">Add location</span>
+                    <span className="text-sm text-gray-400">Add location • Determines currency</span>
                   )}
                 </div>
 
-                {/* Stats Row - Followers, Rating, Share */}
+                {/* Stats Row */}
                 <div className="flex items-center gap-6 mb-4">
-                  {/* Followers */}
                   <div 
                     className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-3 py-2 rounded-lg transition-colors"
                     onClick={() => setEditingSection('basic')}
@@ -367,7 +542,6 @@ const Page_create = () => {
                     </div>
                   </div>
 
-                  {/* Rating */}
                   <div 
                     className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-3 py-2 rounded-lg transition-colors"
                     onClick={() => setActiveTab('Reviews')}
@@ -379,7 +553,6 @@ const Page_create = () => {
                     </div>
                   </div>
 
-                  {/* Share Button */}
                   <button className="flex items-center gap-2 px-4 py-2 bg-[#00008F]/10 text-[#00008F] rounded-lg hover:bg-[#00008F]/20 transition-colors">
                     <Share2 className="w-4 h-4" />
                     <span className="text-sm font-semibold">Share</span>
@@ -440,7 +613,6 @@ const Page_create = () => {
                   )}
                 </div>
 
-                {/* Tags */}
                 {formData.tags.length > 0 && (
                   <div>
                     <h3 className="text-sm font-semibold text-gray-900 mb-2">Tags</h3>
@@ -457,7 +629,6 @@ const Page_create = () => {
                   </div>
                 )}
 
-                {/* Category & Language Info */}
                 <div 
                   onClick={() => setEditingSection('basic')}
                   className="bg-white border border-gray-200 p-4 rounded-lg cursor-pointer hover:border-[#00008F]/50 transition-colors"
@@ -468,10 +639,18 @@ const Page_create = () => {
                   </h3>
                   <div className="space-y-2 text-sm text-gray-600">
                     {formData.category ? (
-                      <p className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">Category:</span> 
-                        {categoriesData?.data?.find(c => c._id === formData.category)?.name || 'Selected'}
-                      </p>
+                      <>
+                        <p className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">Category:</span> 
+                          {getCategoryDisplayName()}
+                        </p>
+                        {formData.childCategory && (
+                          <p className="flex items-center gap-2">
+                            <span className="font-medium text-gray-900">Subcategory:</span> 
+                            {getSubcategoryDisplayName()}
+                          </p>
+                        )}
+                      </>
                     ) : (
                       <p className="text-gray-400">Click to add category</p>
                     )}
@@ -493,7 +672,6 @@ const Page_create = () => {
                   <h3 className="text-lg font-bold text-gray-900 mb-4">Contact Information</h3>
                   
                   <div className="space-y-3">
-                    {/* Phone */}
                     <div 
                       onClick={() => setEditingSection('contact')}
                       className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-[#00008F]/50 transition-colors"
@@ -512,7 +690,6 @@ const Page_create = () => {
                       <Edit3 className="w-5 h-5 text-gray-400" />
                     </div>
 
-                    {/* WhatsApp */}
                     <div 
                       onClick={() => setEditingSection('contact')}
                       className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-[#00008F]/50 transition-colors"
@@ -531,7 +708,6 @@ const Page_create = () => {
                       <Edit3 className="w-5 h-5 text-gray-400" />
                     </div>
 
-                    {/* Email */}
                     <div 
                       onClick={() => setEditingSection('contact')}
                       className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-[#00008F]/50 transition-colors"
@@ -550,7 +726,6 @@ const Page_create = () => {
                       <Edit3 className="w-5 h-5 text-gray-400" />
                     </div>
 
-                    {/* Telegram */}
                     <div 
                       onClick={() => setEditingSection('contact')}
                       className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-[#00008F]/50 transition-colors"
@@ -571,12 +746,10 @@ const Page_create = () => {
                   </div>
                 </div>
 
-                {/* Social Media */}
                 <div>
                   <h3 className="text-lg font-bold text-gray-900 mb-4">Social Media</h3>
                   
                   <div className="space-y-3">
-                    {/* Website */}
                     <div 
                       onClick={() => setEditingSection('contact')}
                       className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-[#00008F]/50 transition-colors"
@@ -595,7 +768,6 @@ const Page_create = () => {
                       <Edit3 className="w-5 h-5 text-gray-400" />
                     </div>
 
-                    {/* Facebook */}
                     <div 
                       onClick={() => setEditingSection('contact')}
                       className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-[#00008F]/50 transition-colors"
@@ -614,7 +786,6 @@ const Page_create = () => {
                       <Edit3 className="w-5 h-5 text-gray-400" />
                     </div>
 
-                    {/* Instagram */}
                     <div 
                       onClick={() => setEditingSection('contact')}
                       className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-[#00008F]/50 transition-colors"
@@ -635,7 +806,6 @@ const Page_create = () => {
                   </div>
                 </div>
 
-                {/* Location Info */}
                 <div>
                   <h3 className="text-lg font-bold text-gray-900 mb-4">Location</h3>
                   <div 
@@ -647,13 +817,16 @@ const Page_create = () => {
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-gray-900">Address</p>
-                      {formData.location.town || formData.location.district ? (
+                      {formData.location.townName || formData.location.districtName || formData.location.countryName ? (
                         <p className="text-gray-700 text-sm">
                           {[
-                            formData.location.town && locationsData?.data?.towns?.find(t => t._id === formData.location.town)?.name,
-                            formData.location.district && locationsData?.data?.districts?.find(d => d._id === formData.location.district)?.name,
-                            formData.location.state && locationsData?.data?.states?.find(s => s._id === formData.location.state)?.name,
-                            formData.location.country && locationsData?.data?.countries?.find(c => c._id === formData.location.country)?.name,
+                            formData.location.villageName,
+                            formData.location.townName,
+                            formData.location.municipalityName,
+                            formData.location.districtName,
+                            formData.location.provinceName,
+                            formData.location.stateName,
+                            formData.location.countryName,
                           ].filter(Boolean).join(', ')}
                         </p>
                       ) : (
@@ -668,87 +841,13 @@ const Page_create = () => {
 
             {/* Gallery Section */}
             {activeTab === 'Gallery' && (
-              <div className="mt-6 space-y-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold text-gray-900">Photo Gallery</h3>
-                  <label className="cursor-pointer bg-[#00008F] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#00006F] transition-colors flex items-center gap-2">
-                    <Upload className="w-4 h-4" />
-                    Add Photos
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={(e) => {
-                        Array.from(e.target.files).forEach(file => {
-                          convertToBase64(file).then(base64 => {
-                            dispatch(addImage(base64));
-                            setImagePreview({ 
-                              ...imagePreview, 
-                              gallery: [...imagePreview.gallery, base64] 
-                            });
-                          });
-                        });
-                      }}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-                
-                {imagePreview.gallery.length > 0 ? (
-                  <div className="grid grid-cols-3 gap-3">
-                    {imagePreview.gallery.map((img, index) => (
-                      <div key={index} className="relative aspect-square rounded-lg overflow-hidden group border border-gray-200">
-                        <img 
-                          src={img} 
-                          alt={`Gallery ${index + 1}`} 
-                          className="w-full h-full object-cover" 
-                        />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <button
-                            onClick={() => {
-                              dispatch(removeImage(index));
-                              setImagePreview({
-                                ...imagePreview,
-                                gallery: imagePreview.gallery.filter((_, i) => i !== index),
-                              });
-                            }}
-                            className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600 transition-colors"
-                          >
-                            <X className="w-5 h-5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-16 bg-white border-2 border-dashed border-gray-300 rounded-lg">
-                    <ImageIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                    <p className="text-gray-600 font-semibold mb-2">No photos yet</p>
-                    <p className="text-gray-400 text-sm mb-4">Upload photos to showcase your page</p>
-                    <label className="inline-flex cursor-pointer bg-[#00008F] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#00006F] transition-colors">
-                      <Upload className="w-5 h-5 mr-2" />
-                      Upload Photos
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={(e) => {
-                          Array.from(e.target.files).forEach(file => {
-                            convertToBase64(file).then(base64 => {
-                              dispatch(addImage(base64));
-                              setImagePreview({ 
-                                ...imagePreview, 
-                                gallery: [...imagePreview.gallery, base64] 
-                              });
-                            });
-                          });
-                        }}
-                        className="hidden"
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
+              <GalleryWithPricing 
+                imagePreview={imagePreview}
+                setImagePreview={setImagePreview}
+                formData={formData}
+                country={currencyConfig.countryCode}
+                currencyConfig={currencyConfig}
+              />
             )}
 
             {/* Advertisement Section */}
@@ -765,7 +864,7 @@ const Page_create = () => {
                   <ImageIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-600 font-semibold mb-2">No advertisements yet</p>
                   <p className="text-gray-400 text-sm mb-4">Promote your products or services</p>
-                  <button className="bg-[#00008F] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#00006F] transition-colors">
+                  <button className="bg-slate-600 text-white px-6 py-3 rounded-lg font-semibold">
                     Create Advertisement
                   </button>
                 </div>
@@ -786,7 +885,7 @@ const Page_create = () => {
                   <AlertCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-600 font-semibold mb-2">No needs posted yet</p>
                   <p className="text-gray-400 text-sm mb-4">Share what you're looking for</p>
-                  <button className="bg-[#00008F] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#00006F] transition-colors">
+                  <button className="bg-slate-700 text-white px-6 py-3 rounded-lg font-semibold">
                     Post a Need
                   </button>
                 </div>
@@ -807,7 +906,7 @@ const Page_create = () => {
                   <Tag className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-600 font-semibold mb-2">No offers available</p>
                   <p className="text-gray-400 text-sm mb-4">Share special deals with your followers</p>
-                  <button className="bg-[#00008F] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#00006F] transition-colors">
+                  <button className="bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold">
                     Create Special Offer
                   </button>
                 </div>
@@ -824,7 +923,6 @@ const Page_create = () => {
                   </button>
                 </div>
 
-                {/* Overall Rating */}
                 <div className="bg-gradient-to-br from-[#00008F]/5 to-blue-50 rounded-xl p-6 border border-[#00008F]/10">
                   <div className="flex items-center gap-6">
                     <div className="text-center">
@@ -857,14 +955,12 @@ const Page_create = () => {
                   </div>
                 </div>
 
-                {/* No Reviews Yet */}
                 <div className="text-center py-16 bg-white border border-gray-200 rounded-lg">
                   <Star className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-600 font-semibold mb-2">No reviews yet</p>
                   <p className="text-gray-400 text-sm">Be the first to leave a review!</p>
                 </div>
 
-                {/* Review Skeleton Placeholders */}
                 <div className="space-y-4">
                   {[1, 2, 3].map((i) => (
                     <div key={i} className="bg-white border border-gray-200 rounded-xl p-5">
@@ -897,7 +993,6 @@ const Page_create = () => {
                   ))}
                 </div>
 
-                {/* Load More Button */}
                 <button className="w-full mt-4 py-3 border-2 border-gray-200 rounded-lg text-gray-700 font-semibold hover:bg-gray-50 transition-colors">
                   Load More Reviews
                 </button>
@@ -906,17 +1001,26 @@ const Page_create = () => {
           </div>
         </div>
 
-        {/* Save Button */}
+        {/* ✅ Save Button with proper disabled state */}
         <div className="mt-6 flex justify-end">
           <button
             onClick={handleSubmit}
-            disabled={creating}
-            className="flex items-center gap-2 px-8 py-3 bg-[#00008F] text-white rounded-lg font-semibold hover:bg-[#00006F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+            disabled={isSubmitDisabled}
+            className={`flex items-center gap-2 px-8 py-3 rounded-lg font-semibold transition-colors shadow-lg
+              ${isSubmitDisabled 
+                ? 'bg-gray-400 cursor-not-allowed opacity-50' 
+                : 'bg-[#00008F] hover:bg-[#00006F] text-white'
+              }`}
           >
-            {creating ? (
+            {isProcessingPayment ? (
               <>
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Creating...
+                Processing Payment...
+              </>
+            ) : creating ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Creating Page...
               </>
             ) : (
               <>
@@ -950,9 +1054,11 @@ const Page_create = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {pageTypesData?.data?.map((type) => {
-                const price = type.prices?.[country] || type.prices?.['LK'];
-                const isFree = !price || price.price === 0;
+                const priceInfo = getPriceForCountry(type.prices, currencyConfig);
+                const isFree = priceInfo.price === 0;
                 const isSelected = pageType?._id === type._id;
+                const typeIcon = getPageTypeIcon(type.name);
+                const TypeIcon = typeIcon.icon;
 
                 return (
                   <div
@@ -961,13 +1067,17 @@ const Page_create = () => {
                       dispatch(setPageType(type));
                       setEditingSection(null);
                     }}
-                    className={`p-6 border-2 rounded-xl cursor-pointer transition-all ${
+                    className={`p-6 border-2 rounded-xl cursor-pointer transition-all relative overflow-hidden ${
                       isSelected
                         ? 'border-[#00008F] bg-[#00008F]/5'
                         : 'border-gray-200 hover:border-[#00008F]/50'
                     }`}
                   >
-                    <div className="flex items-start justify-between mb-3">
+                    <div className={`absolute top-4 right-4 w-12 h-12 bg-gradient-to-br ${typeIcon.gradient} rounded-full flex items-center justify-center shadow-lg`}>
+                      <TypeIcon className="w-6 h-6 text-white" />
+                    </div>
+
+                    <div className="flex items-start justify-between mb-3 pr-16">
                       <h3 className="text-lg font-bold text-gray-900">{type.name}</h3>
                       {isSelected && (
                         <CheckCircle className="w-5 h-5 text-[#00008F]" />
@@ -975,18 +1085,22 @@ const Page_create = () => {
                     </div>
                     <p className="text-gray-600 text-sm mb-4 line-clamp-2">{type.description}</p>
                     <div className="space-y-2 text-sm">
-                      {price && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Price:</span>
-                          <span className="font-bold text-[#00008F]">
-                            {price.price === 0 ? 'Free' : `${price.price} ${country === 'LK' ? 'LKR' : 'USD'}`}
-                          </span>
-                        </div>
-                      )}
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Price:</span>
+                        <span className="font-bold text-[#00008F]">
+                          {isFree ? 'Free' : `${currencyConfig.symbol}${priceInfo.price}`}
+                        </span>
+                      </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Valid Days:</span>
                         <span className="font-bold text-gray-900">{type.validdays || 'Unlimited'}</span>
                       </div>
+                      {!isFree && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Payment via:</span>
+                          <span className="font-semibold text-gray-700 capitalize">{priceInfo.gateway}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -1035,7 +1149,11 @@ const Page_create = () => {
                 </label>
                 <select
                   value={formData.category}
-                  onChange={(e) => dispatch(updateFormData({ category: e.target.value }))}
+                  onChange={(e) => {
+                    dispatch(updateFormData({ category: e.target.value }));
+                    dispatch(updateFormData({ childCategory: null }));
+                    setSelectedSubcategory(null);
+                  }}
                   className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#00008F] focus:border-[#00008F] transition-all"
                 >
                   <option value="">Select Category</option>
@@ -1047,7 +1165,30 @@ const Page_create = () => {
                 </select>
               </div>
 
-              <div>
+              {availableSubcategories.length > 0 && (
+                <div>
+                  <label className="block text-gray-900 font-semibold mb-2">
+                    Subcategory <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formData.childCategory || ''}
+                    onChange={(e) => {
+                      dispatch(updateFormData({ childCategory: e.target.value }));
+                      setSelectedSubcategory(e.target.value);
+                    }}
+                    className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#00008F] focus:border-[#00008F] transition-all"
+                  >
+                    <option value="">Select Subcategory</option>
+                    {availableSubcategories.map((subcat) => (
+                      <option key={subcat._id} value={subcat._id}>
+                        {subcat.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className={availableSubcategories.length === 0 ? '' : 'md:col-span-2'}>
                 <label className="block text-gray-900 font-semibold mb-2">Language</label>
                 <select
                   value={formData.language}
@@ -1109,79 +1250,35 @@ const Page_create = () => {
           title="Edit Location"
         >
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-gray-900 font-semibold mb-2">Country</label>
-                <select
-                  value={formData.location.country}
-                  onChange={(e) =>
-                    dispatch(updateNestedFormData({ field: 'location', data: { country: e.target.value } }))
-                  }
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#00008F] focus:border-[#00008F] transition-all"
-                >
-                  <option value="">Select Country</option>
-                  {locationsData?.data?.countries?.map((loc) => (
-                    <option key={loc._id} value={loc._id}>
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
+            {formData.location.countryName && (
+              <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
+                    <Globe className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-gray-900">Currency Based on Location</p>
+                    <p className="text-lg font-bold text-blue-600">
+                      {currencyConfig.name} ({currencyConfig.symbol})
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      All prices will be shown in {currencyConfig.code}
+                    </p>
+                  </div>
+                </div>
               </div>
-
-              <div>
-                <label className="block text-gray-900 font-semibold mb-2">Region/State</label>
-                <select
-                  value={formData.location.state}
-                  onChange={(e) =>
-                    dispatch(updateNestedFormData({ field: 'location', data: { state: e.target.value } }))
-                  }
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#00008F] focus:border-[#00008F] transition-all"
-                >
-                  <option value="">Select State</option>
-                  {locationsData?.data?.states?.map((loc) => (
-                    <option key={loc._id} value={loc._id}>
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-gray-900 font-semibold mb-2">District</label>
-                <select
-                  value={formData.location.district}
-                  onChange={(e) =>
-                    dispatch(updateNestedFormData({ field: 'location', data: { district: e.target.value } }))
-                  }
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#00008F] focus:border-[#00008F] transition-all"
-                >
-                  <option value="">Select District</option>
-                  {locationsData?.data?.districts?.map((loc) => (
-                    <option key={loc._id} value={loc._id}>
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-gray-900 font-semibold mb-2">City/Town</label>
-                <select
-                  value={formData.location.town}
-                  onChange={(e) =>
-                    dispatch(updateNestedFormData({ field: 'location', data: { town: e.target.value } }))
-                  }
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#00008F] focus:border-[#00008F] transition-all"
-                >
-                  <option value="">Select City/Town</option>
-                  {locationsData?.data?.towns?.map((loc) => (
-                    <option key={loc._id} value={loc._id}>
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+            )}
+            
+            <LocationSelect
+              geoLocations={geoLocationsData?.data || []}
+              selectedLocation={formData.location}
+              onChange={(locationData) => {
+                dispatch(updateNestedFormData({ 
+                  field: 'location', 
+                  data: locationData 
+                }));
+              }}
+            />
 
             <button
               onClick={() => setEditingSection(null)}
@@ -1201,29 +1298,57 @@ const Page_create = () => {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-gray-900 font-semibold mb-2">Phone Number</label>
-                <input
-                  type="tel"
+                <label className="block text-gray-900 font-semibold mb-2">
+                  Phone Number
+                </label>
+                <PhoneInput
+                  international
+                  defaultCountry="LK"
                   value={formData.contact.phone}
-                  onChange={(e) =>
-                    dispatch(updateNestedFormData({ field: 'contact', data: { phone: e.target.value } }))
+                  onChange={(value) =>
+                    dispatch(
+                      updateNestedFormData({
+                        field: 'contact',
+                        data: { phone: value }
+                      })
+                    )
                   }
-                  placeholder="+94 77 123 4567"
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#00008F] focus:border-[#00008F] transition-all"
+                  className="phone-input-wrapper"
                 />
+                {formData.contact.phone && !isValidPhoneNumber(formData.contact.phone) && (
+                  <p className="text-sm text-red-600 mt-1">
+                    Invalid phone number
+                  </p>
+                )}
               </div>
 
               <div>
-                <label className="block text-gray-900 font-semibold mb-2">WhatsApp</label>
-                <input
-                  type="tel"
+                <label className="block text-gray-900 font-semibold mb-2">
+                  WhatsApp
+                </label>
+                <PhoneInput
+                  international
+                  defaultCountry="LK"
                   value={formData.contact.whatsapp}
-                  onChange={(e) =>
-                    dispatch(updateNestedFormData({ field: 'contact', data: { whatsapp: e.target.value } }))
+                  onChange={(value) =>
+                    dispatch(
+                      updateNestedFormData({
+                        field: 'contact',
+                        data: { whatsapp: value }
+                      })
+                    )
                   }
                   placeholder="+94 77 123 4567"
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#00008F] focus:border-[#00008F] transition-all"
+                  className="phone-input-wrapper"
                 />
+                {formData.contact.whatsapp && !isValidPhoneNumber(formData.contact.whatsapp) && (
+                  <p className="text-sm text-red-600 mt-1">
+                    Invalid WhatsApp number
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  You can use a different number or same as Phone.
+                </p>
               </div>
 
               <div>
@@ -1232,7 +1357,12 @@ const Page_create = () => {
                   type="email"
                   value={formData.contact.email}
                   onChange={(e) =>
-                    dispatch(updateNestedFormData({ field: 'contact', data: { email: e.target.value } }))
+                    dispatch(
+                      updateNestedFormData({
+                        field: 'contact',
+                        data: { email: e.target.value }
+                      })
+                    )
                   }
                   placeholder="your@email.com"
                   className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#00008F] focus:border-[#00008F] transition-all"
@@ -1245,7 +1375,12 @@ const Page_create = () => {
                   type="text"
                   value={formData.contact.telegram}
                   onChange={(e) =>
-                    dispatch(updateNestedFormData({ field: 'contact', data: { telegram: e.target.value } }))
+                    dispatch(
+                      updateNestedFormData({
+                        field: 'contact',
+                        data: { telegram: e.target.value }
+                      })
+                    )
                   }
                   placeholder="@username"
                   className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#00008F] focus:border-[#00008F] transition-all"
@@ -1305,6 +1440,19 @@ const Page_create = () => {
             </button>
           </div>
         </EditModal>
+
+        {/* ✅ Confirmation Modal */}
+        {costData && (
+          <PageCreationConfirmationModal
+            isOpen={showConfirmationModal}
+            onClose={() => !isProcessingPayment && setShowConfirmationModal(false)}
+            onConfirm={handleConfirmationAction}
+            costData={costData}
+            isCreating={creating}
+            isProcessingPayment={isProcessingPayment}
+            setIsProcessingPayment={setIsProcessingPayment}
+          />
+        )}
       </div>
 
       <style jsx>{`

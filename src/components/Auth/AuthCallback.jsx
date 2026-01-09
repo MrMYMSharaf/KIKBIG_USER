@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
-import { setCredentials } from "../../features/redux/authSlice";
+import { setAuthenticated } from "../../features/redux/authSlice";
 
 const AuthCallback = () => {
   const navigate = useNavigate();
@@ -39,7 +39,7 @@ const AuthCallback = () => {
         console.log("✅ User data:", data);
 
         if (data.success && data.user) {
-          dispatch(setCredentials({ user: data.user }));
+          dispatch(setAuthenticated(true));
           console.log("✅ Redirecting to home...");
           navigate("/");
         } else {

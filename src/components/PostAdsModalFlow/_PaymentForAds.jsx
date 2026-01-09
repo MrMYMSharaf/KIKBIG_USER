@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import { useAdtypeQuery } from "../../features/adtypeSlice";
 import { useLocationQuery } from "../../features/locationSlice";
 import { uploadAdData } from "../../functions/uploadAdData";
@@ -7,6 +7,7 @@ import { handlePayment } from "../../functions/handlePayment";
 
 const PaymentForAds = ({ onBack, onNext }) => {
 
+  const dispatch = useDispatch();
   
   const { data: adTypesData, error, isLoading } = useAdtypeQuery();
   const { data: locationsData } = useLocationQuery();
@@ -15,11 +16,9 @@ const PaymentForAds = ({ onBack, onNext }) => {
   const extraImagesCount = useSelector((state) => state.adPost.pricing.extraImagesCount);
   const pricePerExtraImage = useSelector((state) => state.adPost.pricing.pricePerExtraImage);
   const formDataFromRedux = useSelector((state) => state.adPost.formData);
+  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
 
-  // Get user data from auth slice
-  const { user, token } = useSelector((state) => state.auth);
-  const userId = user?.id || user?._id;
-  const userType = user?.userType;
+  
   
   const [formData, setFormData] = useState({
     adType: "",
@@ -104,10 +103,11 @@ const PaymentForAds = ({ onBack, onNext }) => {
   };
 
   const handlePaymentClick = async () => {
-  if (!userId) {
-    alert("Please login again");
-    return;
-  }
+    if (!isAuthenticated) {
+  alert("Please login to post an ad");
+  return;
+}
+ 
 
   if (!selectedAdType) {
     alert("Please select ad type");
@@ -119,8 +119,6 @@ const PaymentForAds = ({ onBack, onNext }) => {
     if (costBreakdown.isFree) {
       await uploadAdData({
         ...formDataFromRedux,
-        userId,
-        userType,
         adType: selectedAdType._id,
         totalCost: 0,
         currency: costBreakdown.currency,
@@ -146,8 +144,6 @@ const PaymentForAds = ({ onBack, onNext }) => {
 
     await uploadAdData({
       ...formDataFromRedux,
-      userId,
-      userType,
       adType: selectedAdType._id,
       price: costBreakdown.adTypeCost,
       extraImagesCost: costBreakdown.extraImagesCost,
@@ -496,3 +492,4 @@ const PaymentForAds = ({ onBack, onNext }) => {
 };
 
 export default PaymentForAds;
+

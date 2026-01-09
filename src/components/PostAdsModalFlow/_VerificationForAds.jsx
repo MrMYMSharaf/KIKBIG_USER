@@ -6,7 +6,6 @@ import { useCreateVerificationMutation } from "../../features/aiverificationoutp
 
 const _VerificationForAds = ({ onBack, onNext }) => {
   const uploadedAdId = useSelector((state) => state.adPost.uploadedAdId);
-  const userId = useSelector((state) => state.auth.user?.id || state.auth.userId);
   const [verificationResult, setVerificationResult] = useState(null);
   const [savingResult, setSavingResult] = useState(false);
   const [countdown, setCountdown] = useState(5);
@@ -54,7 +53,6 @@ const _VerificationForAds = ({ onBack, onNext }) => {
         try {
           const savePayload = {
             ad_id: uploadedAdId,
-            user_id: userId,
             success: result.success,
             message: result.message,
             image_check: result.image_check,
@@ -99,7 +97,7 @@ const _VerificationForAds = ({ onBack, onNext }) => {
     };
 
     runVerification();
-  }, [uploadedAd, verifyItem, createVerification, uploadedAdId, userId]);
+  }, [uploadedAd, verifyItem, createVerification, uploadedAdId]);
 
   // Countdown timer and auto-redirect
   useEffect(() => {

@@ -1,17 +1,13 @@
-// features/authSlice.js
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 
-// ✅ Get base URL from environment variable with fallback
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 export const authApi = createApi({
   reducerPath: "authApi",
   baseQuery: fetchBaseQuery({
     baseUrl: API_BASE_URL,
-    credentials: "include", // Important for cookies
-    prepareHeaders: (headers) => {
-      return headers;
-    },
+    credentials: "include", // ✅ REQUIRED for cookies
   }),
   endpoints: (builder) => ({
     loginUser: builder.mutation({
@@ -21,6 +17,7 @@ export const authApi = createApi({
         body: { email, password },
       }),
     }),
+
     registerUser: builder.mutation({
       query: (newUser) => ({
         url: "/api/authuser/register",
@@ -28,13 +25,14 @@ export const authApi = createApi({
         body: newUser,
       }),
     }),
+
     logoutUser: builder.mutation({
       query: () => ({
         url: "/api/authuser/logout",
         method: "POST",
       }),
     }),
-    // ✅ Add endpoint to get current user (for OAuth callback)
+
     getCurrentUser: builder.query({
       query: () => "/api/authuser/me",
     }),

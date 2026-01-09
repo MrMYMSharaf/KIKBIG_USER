@@ -18,6 +18,8 @@ import { awsVerificationApi } from "../features/AwsVerficationapislice";
 import { aiVerificationApi } from "../features/aiverificationoutputSlice";
 import {pagetypeApi} from "../features/pagetypeApi";
 import {pageApiSlice} from "../features/pageApiSlice";
+import {imagePriceApiSlice} from "../features/page.imagePriceApi";
+import{pageFollowingApiSlice} from "../features/page.flowwingSlice";
 
 // Reducers
 import authReducer from "../features/redux/authSlice";
@@ -30,7 +32,7 @@ import pageCreateReducer from "../features/redux/pagecreationSlice";
 const authPersistConfig = {
   key: "auth",
   storage,
-  whitelist: ["user", "isAuthenticated"], // ❌ Don't persist token (it's in cookie)
+  whitelist: ["isAuthenticated"], // ❌ Don't persist token (it's in cookie)
 };
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
 
@@ -77,6 +79,8 @@ export const store = configureStore({
     [aiVerificationApi.reducerPath]: aiVerificationApi.reducer,
     [pagetypeApi.reducerPath]: pagetypeApi.reducer,
     [pageApiSlice.reducerPath]: pageApiSlice.reducer,
+    [imagePriceApiSlice.reducerPath]: imagePriceApiSlice.reducer,
+    [pageFollowingApiSlice.reducerPath]: pageFollowingApiSlice.reducer,
 
     // Persisted reducers
     auth: persistedAuthReducer,
@@ -107,7 +111,9 @@ export const store = configureStore({
       awsVerificationApi.middleware,
       aiVerificationApi.middleware,
       pagetypeApi.middleware,
-      pageApiSlice.middleware
+      pageApiSlice.middleware,
+      imagePriceApiSlice.middleware,
+      pageFollowingApiSlice.middleware
     ),
 });
 

@@ -1,6 +1,7 @@
 // functions/handlePayment.js
 import { store } from "../store/store";
 import { paymentApi } from "../features/paymentApiSlice";
+import Swal from "sweetalert2";
 
 export const handlePayment = async ({
   adType,
@@ -10,16 +11,10 @@ export const handlePayment = async ({
 }) => {
   try {
     const state = store.getState();
-    const user = state.auth.user;
     const adForm = state.adPost.formData;
     const contact = adForm.contact || {};
 
-    if (!user) {
-      alert("User not logged in");
-      return false;
-    }
-
-    // ✅ UNIQUE ORDER ID
+    // ✅ Unique order ID
     const orderId = `AD-${Date.now()}`;
 
     const countryMap = {
@@ -30,54 +25,55 @@ export const handlePayment = async ({
 
     const countryName = countryMap[countryCode] || "Sri Lanka";
 
-    // 🔥 SEND FULL DATA TO BACKEND
+    // 🔥 Payment details to backend
     const paymentDetails = {
       orderId,
-      userId: user._id || user.id,
       payfor: "Advertisement",
-
       amount: Number(amount).toFixed(2),
       currency,
-
-      first_name: user.firstName || user.name || "User",
-      last_name: user.lastName || "",
-      email: contact.email || user.email || "",
-      phone: contact.phone || user.phone || "",
+      first_name: contact.first_name || "User",
+      last_name: contact.last_name || "",
+      email: contact.email || "",
+      phone: contact.phone || "",
       address: "N/A",
       city: "N/A",
       country: countryName,
-
       items: adForm.title || "Advertisement",
-      metadata: { adType, countryCode, adId: adForm._id },
+      metadata: {
+        adType,
+        countryCode,
+        adId: adForm._id,
+      },
     };
 
-    // 1️⃣ CALL BACKEND /start to create pending payment
+    // 1️⃣ Start payment (backend reads user from cookie)
     const result = await store.dispatch(
       paymentApi.endpoints.startPayment.initiate(paymentDetails)
     );
 
     if (result.error) {
       console.error("❌ Payment initialization failed:", result.error);
-      alert("Payment initialization failed");
+      Swal.fire({
+        icon: 'error',
+        title: 'Payment Error',
+        text: 'Failed to initialize payment. Please try again.',
+      });
       return false;
     }
 
     const { hash, merchant_id } = result.data;
 
-    // 2️⃣ PREPARE PAYHERE PAYMENT OBJECT
+    // 2️⃣ Prepare PayHere payment object
     const payment = {
       sandbox: true,
       merchant_id,
-
       return_url: "http://localhost:5173/payment/success",
       cancel_url: "http://localhost:5173/payment/cancel",
       notify_url: "http://localhost:4000/payment/notify",
-
       order_id: orderId,
       items: paymentDetails.items,
       amount: paymentDetails.amount,
       currency: paymentDetails.currency,
-
       first_name: paymentDetails.first_name,
       last_name: paymentDetails.last_name,
       email: paymentDetails.email,
@@ -85,41 +81,59 @@ export const handlePayment = async ({
       address: paymentDetails.address,
       city: paymentDetails.city,
       country: paymentDetails.country,
-
       hash,
     };
 
-    // 3️⃣ START PAYHERE PAYMENT AND HANDLE CALLBACKS
+    // 3️⃣ Start PayHere payment and handle callbacks
     return new Promise((resolve) => {
       window.payhere.onCompleted = async () => {
         console.log("✅ PayHere COMPLETED | Order:", payment.order_id);
 
+        // Show SweetAlert notification immediately
+        Swal.fire({
+          icon: 'success',
+          title: 'Payment Completed!',
+          text: 'Verification in progress. You will receive confirmation shortly.',
+          showConfirmButton: true,
+          confirmButtonText: 'OK',
+          timer: 5000, // auto-close after 5s
+        });
+
         try {
-          // 4️⃣ CALL BACKEND VERIFY ENDPOINT
+          // 4️⃣ Call backend to verify payment
           const verifyResult = await store.dispatch(
             paymentApi.endpoints.verifyPayment.initiate({ orderId: payment.order_id })
           );
 
           if (verifyResult.data?.status === "completed") {
             console.log("Payment verified ✅", verifyResult.data);
-            resolve(true); // Payment success
           } else {
             console.warn("Payment not verified ❌", verifyResult.data);
-            resolve(false);
           }
         } catch (err) {
           console.error("Payment verification failed:", err);
-          resolve(false);
         }
+
+        resolve(true); // Resolve immediately so UX is smooth
       };
 
       window.payhere.onDismissed = () => {
         console.log("⚠️ Payment dismissed by user");
+        Swal.fire({
+          icon: 'info',
+          title: 'Payment Cancelled',
+          text: 'You closed the payment window.',
+        });
         resolve(false);
       };
 
       window.payhere.onError = (err) => {
         console.error("❌ PayHere ERROR:", err);
+        Swal.fire({
+          icon: 'error',
+          title: 'Payment Error',
+          text: 'Something went wrong during payment.',
+        });
         resolve(false);
       };
 
@@ -128,7 +142,11 @@ export const handlePayment = async ({
     });
   } catch (err) {
     console.error("❌ Payment exception:", err);
-    alert("Payment error occurred");
+    Swal.fire({
+      icon: 'error',
+      title: 'Payment Exception',
+      text: 'An error occurred while processing your payment.',
+    });
     return false;
   }
 };

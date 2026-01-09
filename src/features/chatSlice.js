@@ -4,6 +4,7 @@ export const chatApi = createApi({
   reducerPath: "chatApi",
   baseQuery: fetchBaseQuery({
     baseUrl: "http://localhost:4000/api",
+    credentials: 'include', // Important: This sends HTTP-only cookies with requests
     prepareHeaders: (headers) => {
       headers.set("Content-Type", "application/json");
       return headers;

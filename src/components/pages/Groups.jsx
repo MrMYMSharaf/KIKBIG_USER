@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FaSearch, FaPaperPlane, FaUsers, FaPlus, FaTimes } from 'react-icons/fa';
 import { FiLogOut, FiSettings } from 'react-icons/fi';
 import { HiPlus } from 'react-icons/hi';
+import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import { useGetCurrentUserQuery } from '../../features/authSlice';
 import { 
   useGetMessagesQuery, 
   useSendMessageMutation, 
@@ -16,7 +19,7 @@ import {
   useGetGroupDetailsQuery,
   useAddMembersMutation,
 } from '../../features/groupSlice';
-import { useAuth } from "../../hooks/useAuth";
+
 
 // Create Group Modal Component
 const CreateGroupModal = ({ isOpen, onClose, userId, allContacts }) => {
@@ -287,6 +290,19 @@ const GroupInfoModal = ({ isOpen, onClose, group, userId, onLeave }) => {
 
 // Main Groups Component
 const Groups = () => {
+  const navigate = useNavigate();
+  
+  // Get authentication status from Redux
+  const isAuthenticated = useSelector((state) => state.auth?.isAuthenticated);
+  
+  // Get userId from API call - backend decodes JWT cookie and returns user info
+  const { data: currentUserData, isLoading: isLoadingUser, error: userError } = useGetCurrentUserQuery(undefined, {
+    skip: !isAuthenticated, // Only call if authenticated
+  });
+
+  // Extract userId from the API response
+  const userId = currentUserData?.user?._id || currentUserData?.user?.id || currentUserData?._id || currentUserData?.id;
+
   const [selectedChat, setSelectedChat] = useState(null);
   const [chatType, setChatType] = useState(null); // 'individual' or 'group'
   const [isMobileChatVisible, setIsMobileChatVisible] = useState(false);
@@ -297,7 +313,12 @@ const Groups = () => {
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const { userId, isAuthenticated } = useAuth();
+  // Check authentication on mount
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login');
+    }
+  }, [isAuthenticated, navigate]);
 
   // Queries
   const { data: chatListData } = useGetChatListQuery(userId, { skip: !userId });
@@ -402,7 +423,17 @@ const Groups = () => {
     return date.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
-  if (!isAuthenticated) {
+  // Show loading while fetching user
+  if (isLoadingUser) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-100">
+        <h2 className="text-2xl font-bold text-gray-700">Loading...</h2>
+      </div>
+    );
+  }
+
+  // Show login message if not authenticated or no userId
+  if (!isAuthenticated || !userId) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
         <h2 className="text-2xl font-bold text-gray-700">Please log in to access chat</h2>
@@ -626,3 +657,4 @@ const Groups = () => {
 };
 
 export default Groups;
+

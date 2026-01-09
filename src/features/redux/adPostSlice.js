@@ -5,7 +5,6 @@ const initialState = {
   adType: "",
   uploadedAdId: null,
   formData: {
-    userId: "",
     title: "",
     description: "",
     price: "",
@@ -25,7 +24,7 @@ const initialState = {
     town: "",
     village: "",
     userType: "",
-    typeofads: "", // 🔥 FIXED: Don't set default value here - let user choose
+    typeofads: "", // user chooses
     specialQuestions: {},
     contact: {
       phone: "",
@@ -34,6 +33,7 @@ const initialState = {
       telegram: "",
     },
   },
+
   // Pricing configuration
   pricing: {
     extraImagesCount: 0,
@@ -51,44 +51,49 @@ const adPostSlice = createSlice({
     setStep: (state, action) => {
       state.step = action.payload;
     },
+
     setAdType: (state, action) => {
       state.adType = action.payload;
     },
+
     setUploadedAdId: (state, action) => {
       state.uploadedAdId = action.payload;
       console.log("✅ Uploaded Ad ID saved to Redux:", action.payload);
     },
-    setUserId: (state, action) => {
-      state.formData.userId = action.payload;
-    },
+
     updateFormData: (state, action) => {
       state.formData = { ...state.formData, ...action.payload };
     },
+
     updateSpecialQuestions: (state, action) => {
       state.formData.specialQuestions = {
         ...state.formData.specialQuestions,
         ...action.payload,
       };
     },
+
     updateContact: (state, action) => {
       state.formData.contact = {
         ...state.formData.contact,
-        ...action.payload
+        ...action.payload,
       };
     },
-    // 🔥 FIXED: Ensure this reducer sets the exact value passed
+
     setTypeOfAds: (state, action) => {
       console.log("🔥 setTypeOfAds called with:", action.payload);
       state.formData.typeofads = action.payload;
     },
+
     updatePricing: (state, action) => {
       state.pricing = { ...state.pricing, ...action.payload };
     },
+
     setExtraImagesCount: (state, action) => {
       state.pricing.extraImagesCount = action.payload;
       state.pricing.extraImagesCost =
         action.payload * state.pricing.pricePerExtraImage;
     },
+
     resetAdPost: () => initialState,
   },
 });
@@ -97,7 +102,6 @@ export const {
   setStep,
   setAdType,
   setUploadedAdId,
-  setUserId,
   updateFormData,
   updateSpecialQuestions,
   updateContact,

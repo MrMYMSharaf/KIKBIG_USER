@@ -31,6 +31,7 @@ const initialState = {
     cover_image: null,
     logo_image: null,
     images: [],
+    imagePrices: null, // <-- added image price field
 
     // Contact Info
     contact: {
@@ -59,23 +60,24 @@ const pageCreateSlice = createSlice({
   name: "pageCreate",
   initialState,
   reducers: {
+    // Steps
     setStep: (state, action) => {
       state.step = action.payload;
     },
-
     nextStep: (state) => {
       state.step += 1;
     },
-
     prevStep: (state) => {
       state.step -= 1;
     },
 
+    // Page Type
     setPageType: (state, action) => {
       state.pageType = action.payload;
       state.formData.pagetype = action.payload._id;
     },
 
+    // General form updates
     updateFormData: (state, action) => {
       state.formData = {
         ...state.formData,
@@ -91,42 +93,73 @@ const pageCreateSlice = createSlice({
       };
     },
 
-    setErrors: (state, action) => {
-      state.errors = action.payload;
+    // Field-level updates
+    setField: (state, action) => {
+      const { field, value } = action.payload;
+      state.formData[field] = value;
     },
 
-    clearErrors: (state) => {
-      state.errors = {};
+    // Images
+    setCoverImage: (state, action) => {
+      state.formData.cover_image = action.payload;
+    },
+    setLogoImage: (state, action) => {
+      state.formData.logo_image = action.payload;
+    },
+    addImage: (state, action) => {
+      state.formData.images.push(action.payload);
+    },
+    removeImage: (state, action) => {
+      state.formData.images = state.formData.images.filter(
+        (_, index) => index !== action.payload
+      );
+    },
+    resetImages: (state) => {
+      state.formData.cover_image = null;
+      state.formData.logo_image = null;
+      state.formData.images = [];
     },
 
-    resetPageCreate: (state) => {
-      return initialState;
+    // Image Prices
+    setImagePrice: (state, action) => {
+      state.formData.imagePrices = action.payload; // expects ID
+    },
+    clearImagePrice: (state) => {
+      state.formData.imagePrices = null;
     },
 
-    // Add tag
+    // Tags
     addTag: (state, action) => {
       if (!state.formData.tags.includes(action.payload)) {
         state.formData.tags.push(action.payload);
       }
     },
-
-    // Remove tag
     removeTag: (state, action) => {
       state.formData.tags = state.formData.tags.filter(
         (tag) => tag !== action.payload
       );
     },
 
-    // Add image
-    addImage: (state, action) => {
-      state.formData.images.push(action.payload);
+    // Errors
+    setErrors: (state, action) => {
+      state.errors = action.payload;
+    },
+    clearErrors: (state) => {
+      state.errors = {};
     },
 
-    // Remove image
-    removeImage: (state, action) => {
-      state.formData.images = state.formData.images.filter(
-        (_, index) => index !== action.payload
-      );
+    // Reset
+    resetPageCreate: () => initialState,
+
+    // Reset nested sections
+    resetLocation: (state) => {
+      state.formData.location = { ...initialState.formData.location };
+    },
+    resetContact: (state) => {
+      state.formData.contact = { ...initialState.formData.contact };
+    },
+    resetSocial: (state) => {
+      state.formData.social = { ...initialState.formData.social };
     },
   },
 });
@@ -138,13 +171,22 @@ export const {
   setPageType,
   updateFormData,
   updateNestedFormData,
+  setField,
+  setCoverImage,
+  setLogoImage,
+  addImage,
+  removeImage,
+  resetImages,
+  setImagePrice,
+  clearImagePrice,
+  addTag,
+  removeTag,
   setErrors,
   clearErrors,
   resetPageCreate,
-  addTag,
-  removeTag,
-  addImage,
-  removeImage,
+  resetLocation,
+  resetContact,
+  resetSocial,
 } = pageCreateSlice.actions;
 
 export default pageCreateSlice.reducer;

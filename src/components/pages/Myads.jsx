@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Navigate } from "react-router-dom"; // ✅ Added import
+import { Navigate } from "react-router-dom";
+import { useSelector } from "react-redux";
 import {
   MoreVertical,
   Edit,
@@ -8,40 +9,61 @@ import {
   PlusCircle,
   Filter,
   Search,
+  ShoppingBag,
+  Heart,
+  Gift,
 } from "lucide-react";
+import Swal from "sweetalert2";
 import {
   useGetMyAdvertisementsQuery,
   useDeleteAdvertisementMutation,
 } from "../../features/postadsSlice";
-import { useAuth } from "../../hooks/useAuth";
+import { useGetCurrentUserQuery } from "../../features/authSlice";
 import PostAdsModal from '../PostAdsModalFlow/PostAdsModal';
 
 const Myads = () => {
-  // 🔥 Use the auth hook to get user ID
-  const { userId, isAuthenticated, isLoading: authLoading } = useAuth();
   const [postAdsModalOpen, setPostAdsModalOpen] = useState(false);
+  const [selectedAd, setSelectedAd] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState("all"); // all, advertisement, need, offer
+  const [statusFilter, setStatusFilter] = useState("all"); // all, active, pending, sold
+
+  // Get authentication status from Redux
+  const isAuthenticated = useSelector((state) => state.auth?.isAuthenticated);
+
+  // Get current user data from API
+  const { data: currentUserData, isLoading: authLoading } = useGetCurrentUserQuery(undefined, {
+    skip: !isAuthenticated,
+  });
 
   const openPostAdsModal = () => setPostAdsModalOpen(true);
   const closePostAdsModal = () => setPostAdsModalOpen(false);
 
-
-  // ✅ Redirect if not authenticated
+  // Redirect if not authenticated
   if (!isAuthenticated && !authLoading) {
     return <Navigate to="/auth" replace />;
   }
 
-  // ✅ Fetch only current user's ads
-  const { data, isLoading, isError, refetch } = useGetMyAdvertisementsQuery({
-    page: 1,
-    limit: 100, // Increased to show more ads
-  });
-  
+  // Fetch only current user's ads
+  const { data, isLoading, isError, refetch } = useGetMyAdvertisementsQuery(
+    {
+      page: 1,
+      limit: 100,
+    },
+    {
+      skip: !isAuthenticated, // Skip if not authenticated
+    }
+  );
 
   const [deleteAd, { isLoading: isDeleting }] = useDeleteAdvertisementMutation();
-  const [selectedAd, setSelectedAd] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
 
-  // ✅ Helper for status color
+  // Helper to normalize type string for comparison
+  const normalizeType = (type) => {
+    if (!type) return 'advertisement';
+    return type.toString().toLowerCase().trim();
+  };
+
+  // Helper for status color
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
       case "active":
@@ -55,17 +77,95 @@ const Myads = () => {
     }
   };
 
-  // ✅ Handle ad delete
-  const handleDelete = async (id) => {
-    if (window.confirm("Are you sure you want to delete this ad?")) {
+  // Helper for type badge color
+  const getTypeBadgeColor = (type) => {
+    const normalized = normalizeType(type);
+    switch (normalized) {
+      case "advertisement":
+        return "bg-blue-500";
+      case "need":
+      case "needs":
+        return "bg-purple-500";
+      case "offer":
+      case "offers":
+        return "bg-green-500";
+      default:
+        return "bg-gray-500";
+    }
+  };
+
+  // Helper for type icon
+  const getTypeIcon = (type) => {
+    const normalized = normalizeType(type);
+    switch (normalized) {
+      case "advertisement":
+        return <ShoppingBag size={16} />;
+      case "need":
+      case "needs":
+        return <Heart size={16} />;
+      case "offer":
+      case "offers":
+        return <Gift size={16} />;
+      default:
+        return <ShoppingBag size={16} />;
+    }
+  };
+
+  // Helper for display text
+  const getTypeDisplayText = (type) => {
+    const normalized = normalizeType(type);
+    switch (normalized) {
+      case "advertisement":
+        return "Advertisement";
+      case "need":
+      case "needs":
+        return "Need";
+      case "offer":
+      case "offers":
+        return "Offer";
+      default:
+        return type || "Advertisement";
+    }
+  };
+
+  // Handle ad delete with SweetAlert
+  const handleDelete = async (id, title) => {
+    const result = await Swal.fire({
+      title: 'Are you sure?',
+      html: `You are about to delete:<br/><strong>${title}</strong>`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#EF4444',
+      cancelButtonColor: '#6B7280',
+      confirmButtonText: 'Yes, delete it!',
+      cancelButtonText: 'Cancel',
+      reverseButtons: true,
+    });
+
+    if (result.isConfirmed) {
       try {
         await deleteAd(id).unwrap();
-        alert("Advertisement deleted successfully!");
+        
+        Swal.fire({
+          title: 'Deleted!',
+          text: 'Your advertisement has been deleted successfully.',
+          icon: 'success',
+          confirmButtonColor: '#3B82F6',
+          timer: 2000,
+          showConfirmButton: false,
+        });
+        
         refetch();
         setSelectedAd(null);
       } catch (error) {
         console.error("Failed to delete ad:", error);
-        alert(error?.data?.message || "Failed to delete advertisement.");
+        
+        Swal.fire({
+          title: 'Error!',
+          text: error?.data?.message || 'Failed to delete advertisement.',
+          icon: 'error',
+          confirmButtonColor: '#3B82F6',
+        });
       }
     }
   };
@@ -98,13 +198,50 @@ const Myads = () => {
     );
   }
 
-  // ✅ Adjust data mapping for your backend structure
+  // Adjust data mapping for your backend structure
   const ads = data?.data || [];
 
-  // ✅ Simple search filter (client-side)
-  const filteredAds = ads.filter((ad) =>
+  // Filter by tab (type) - FIXED: Case-insensitive comparison
+  const tabFilteredAds = activeTab === "all" 
+    ? ads 
+    : ads.filter((ad) => {
+        const adType = normalizeType(ad.typeofads);
+        const filterType = activeTab.toLowerCase();
+        
+        // Handle plural forms
+        if (filterType === 'need') {
+          return adType === 'need' || adType === 'needs';
+        }
+        if (filterType === 'offer') {
+          return adType === 'offer' || adType === 'offers';
+        }
+        
+        return adType === filterType;
+      });
+
+  // Filter by status
+  const statusFilteredAds = statusFilter === "all"
+    ? tabFilteredAds
+    : tabFilteredAds.filter((ad) => ad.status?.toLowerCase() === statusFilter.toLowerCase());
+
+  // Search filter
+  const filteredAds = statusFilteredAds.filter((ad) =>
     ad.title?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Count by type - FIXED: Case-insensitive counting
+  const counts = {
+    all: ads.length,
+    advertisement: ads.filter(ad => normalizeType(ad.typeofads) === 'advertisement').length,
+    need: ads.filter(ad => {
+      const type = normalizeType(ad.typeofads);
+      return type === 'need' || type === 'needs';
+    }).length,
+    offer: ads.filter(ad => {
+      const type = normalizeType(ad.typeofads);
+      return type === 'offer' || type === 'offers';
+    }).length,
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -113,49 +250,99 @@ const Myads = () => {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-800">
-              My Advertisements
+              My Posts
             </h1>
             <p className="text-gray-600 mt-1">
-              Total: {ads.length} advertisement{ads.length !== 1 ? 's' : ''}
+              Total: {ads.length} post{ads.length !== 1 ? 's' : ''}
             </p>
           </div>
           <button 
             onClick={openPostAdsModal}
-            className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition"
+            className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition shadow-md hover:shadow-lg"
           >
             <PlusCircle className="mr-2" />
-            Create New Ad
+            Create New Post
           </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="mb-6 border-b border-gray-200">
+          <div className="flex space-x-1 overflow-x-auto">
+            <button
+              onClick={() => setActiveTab("all")}
+              className={`flex items-center px-6 py-3 font-semibold transition-all ${
+                activeTab === "all"
+                  ? "text-blue-600 border-b-2 border-blue-600"
+                  : "text-gray-600 hover:text-gray-800"
+              }`}
+            >
+              <Filter className="mr-2" size={18} />
+              All ({counts.all})
+            </button>
+            <button
+              onClick={() => setActiveTab("advertisement")}
+              className={`flex items-center px-6 py-3 font-semibold transition-all ${
+                activeTab === "advertisement"
+                  ? "text-blue-600 border-b-2 border-blue-600"
+                  : "text-gray-600 hover:text-gray-800"
+              }`}
+            >
+              <ShoppingBag className="mr-2" size={18} />
+              Advertisements ({counts.advertisement})
+            </button>
+            <button
+              onClick={() => setActiveTab("need")}
+              className={`flex items-center px-6 py-3 font-semibold transition-all ${
+                activeTab === "need"
+                  ? "text-purple-600 border-b-2 border-purple-600"
+                  : "text-gray-600 hover:text-gray-800"
+              }`}
+            >
+              <Heart className="mr-2" size={18} />
+              Needs ({counts.need})
+            </button>
+            <button
+              onClick={() => setActiveTab("offer")}
+              className={`flex items-center px-6 py-3 font-semibold transition-all ${
+                activeTab === "offer"
+                  ? "text-green-600 border-b-2 border-green-600"
+                  : "text-gray-600 hover:text-gray-800"
+              }`}
+            >
+              <Gift className="mr-2" size={18} />
+              Offers ({counts.offer})
+            </button>
+          </div>
         </div>
 
         {/* Filters & Search */}
         <div className="flex flex-col md:flex-row justify-between mb-6 gap-4">
           <div className="flex space-x-4">
-            <button className="flex items-center bg-white border rounded-lg px-4 py-2 hover:bg-gray-100">
-              <Filter className="mr-2" size={18} />
-              Filters
-            </button>
-            <select className="bg-white border rounded-lg px-4 py-2">
-              <option>All Status</option>
-              <option>Active</option>
-              <option>Pending</option>
-              <option>Sold</option>
+            <select 
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-white border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+              <option value="sold">Blocked</option>
             </select>
           </div>
 
           <div className="relative">
             <input
               type="text"
-              placeholder="Search ads..."
+              placeholder="Search posts..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border rounded-lg w-full md:w-64"
+              className="pl-10 pr-4 py-2 border rounded-lg w-full md:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <Search className="absolute left-3 top-3 text-gray-400" size={18} />
           </div>
         </div>
 
-        {/* Ads Grid - FIXED */}
+        {/* Ads Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {filteredAds.length > 0 ? (
             filteredAds.map((ad) => (
@@ -175,15 +362,16 @@ const Myads = () => {
                   <div className="absolute top-4 right-4">
                     <button
                       onClick={() => setSelectedAd(ad)}
-                      className="bg-white/70 p-2 rounded-full hover:bg-white/90"
+                      className="bg-white/70 p-2 rounded-full hover:bg-white/90 transition"
                     >
                       <MoreVertical className="text-gray-700" size={20} />
                     </button>
                   </div>
                   {/* Type Badge */}
                   <div className="absolute top-4 left-4">
-                    <span className="bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
-                      {ad.typeofads || 'Advertisement'}
+                    <span className={`${getTypeBadgeColor(ad.typeofads)} text-white px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1`}>
+                      {getTypeIcon(ad.typeofads)}
+                      {getTypeDisplayText(ad.typeofads)}
                     </span>
                   </div>
                 </div>
@@ -219,18 +407,24 @@ const Myads = () => {
           ) : (
             <div className="col-span-full text-center text-gray-500 py-20">
               <div className="text-6xl mb-4">📭</div>
-              <p className="text-xl font-semibold mb-2">No advertisements found</p>
+              <p className="text-xl font-semibold mb-2">
+                {searchTerm 
+                  ? "No posts found matching your search" 
+                  : activeTab === "all" 
+                    ? "No posts yet" 
+                    : `No ${activeTab}s yet`}
+              </p>
               <p className="text-gray-400 mb-4">
                 {searchTerm
                   ? "Try adjusting your search terms"
-                  : "Start by creating your first advertisement"}
+                  : "Start by creating your first post"}
               </p>
               {!searchTerm && (
                 <button
                   onClick={openPostAdsModal}
-                  className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                  className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
                 >
-                  Create Your First Ad
+                  Create Your First Post
                 </button>
               )}
             </div>
@@ -238,15 +432,15 @@ const Myads = () => {
         </div>
 
         {/* Post Ads Modal */}
-<PostAdsModal
-  isOpen={postAdsModalOpen}
-  onClose={closePostAdsModal}
-/>
+        <PostAdsModal
+          isOpen={postAdsModalOpen}
+          onClose={closePostAdsModal}
+        />
 
         {/* Action Modal */}
         {selectedAd && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl p-6 w-96 max-w-[90%]">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl p-6 w-96 max-w-full">
               <h3 className="text-xl font-bold mb-4 line-clamp-2">{selectedAd.title}</h3>
               <div className="space-y-2">
                 <button 
@@ -256,15 +450,15 @@ const Myads = () => {
                   }}
                   className="w-full flex items-center justify-center py-3 hover:bg-gray-100 rounded transition"
                 >
-                  <Edit className="mr-2" size={18} /> Edit Ad
+                  <Edit className="mr-2" size={18} /> Edit Post
                 </button>
                 <button
-                  onClick={() => handleDelete(selectedAd._id)}
+                  onClick={() => handleDelete(selectedAd._id, selectedAd.title)}
                   disabled={isDeleting}
                   className="w-full flex items-center justify-center py-3 text-red-600 hover:bg-red-50 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="mr-2" size={18} /> 
-                  {isDeleting ? 'Deleting...' : 'Delete Ad'}
+                  {isDeleting ? 'Deleting...' : 'Delete Post'}
                 </button>
                 <button
                   onClick={() => setSelectedAd(null)}

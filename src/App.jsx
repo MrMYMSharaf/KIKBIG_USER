@@ -23,7 +23,9 @@ import UserSettingsPage from './components/pages/UserSettingsPage';
 import Demo from './components/pages/demo';
 import Editad from './components/pages/edit-ad.jsx';
 import ShowPageProfile from './components/pages/ShowPageProfile';
-import Page_create from './components/pages/Page_create.jsx';
+import Page_create from './components/pages/Page_demo/Page_create.jsx';
+import PageDetail from './components/pages/PageDetail.jsx';
+import PageEdit from './components/pages/Pageedit.jsx';
 
 import PrivateRoute from './Middleware/PrivateRoute';
 
@@ -54,9 +56,17 @@ function App() {
           {/* SINGLE SEGMENT COUNTRY */}
           <Route path=":countrySlug" element={<Categories />} />
 
+           {/* STATIC FIRST */}
+
           {/* STATIC ROUTES */}
           <Route path=":countrySlug/page" element={<PrivateRoute><Page /></PrivateRoute>} />
-          <Route path="/pages/create" element={<Page_create />} />
+          <Route path="/pages/create" element={<PrivateRoute><Page_create /></PrivateRoute>} />
+          {/* PageDetail is now PUBLIC - anyone can view pages */}
+          <Route path="/page/:id" element={<PageDetail />} />
+          {/* PageEdit remains PRIVATE - only logged in users can edit */}
+          <Route path="/pages/:id/edit" element={<PrivateRoute><PageEdit /></PrivateRoute>} />
+
+          
           <Route path="ShowPageProfile/:id" element={<PrivateRoute><ShowPageProfile /></PrivateRoute>} />
           <Route path="groups" element={<PrivateRoute><Groups /></PrivateRoute>} />
           <Route path="myads" element={<PrivateRoute><Myads /></PrivateRoute>} />
@@ -92,3 +102,4 @@ function App() {
 }
 
 export default App;
+
