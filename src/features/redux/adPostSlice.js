@@ -4,6 +4,11 @@ const initialState = {
   step: "choose",
   adType: "",
   uploadedAdId: null,
+  
+  // Account/Page selection
+  accountType: null, // 'user' or 'page'
+  selectedPage: null, // page object when posting as page
+  
   formData: {
     title: "",
     description: "",
@@ -24,7 +29,8 @@ const initialState = {
     town: "",
     village: "",
     userType: "",
-    typeofads: "", // user chooses
+    typeofads: "", // user chooses: "Advertisement", "Needs", or "Offers"
+    page: null, // 🔥 NEW: page ID when posting as page (extracted from selectedPage._id)
     specialQuestions: {},
     contact: {
       phone: "",
@@ -61,6 +67,33 @@ const adPostSlice = createSlice({
       console.log("✅ Uploaded Ad ID saved to Redux:", action.payload);
     },
 
+    // Set account type (user or page)
+    setAccountType: (state, action) => {
+      state.accountType = action.payload;
+      console.log("✅ Account type set to:", action.payload);
+      
+      // 🔥 NEW: If switching to 'user', clear page ID
+      if (action.payload === 'user') {
+        state.formData.page = null;
+        console.log("🔥 Cleared page ID (posting as user)");
+      }
+    },
+
+    // Set selected page
+    setSelectedPage: (state, action) => {
+      state.selectedPage = action.payload;
+      console.log("✅ Selected page:", action.payload);
+      
+      // 🔥 NEW: Automatically set page ID in formData when page is selected
+      if (action.payload && action.payload._id) {
+        state.formData.page = action.payload._id;
+        console.log("🔥 Page ID set in formData:", action.payload._id);
+      } else {
+        state.formData.page = null;
+        console.log("🔥 Page ID cleared from formData");
+      }
+    },
+
     updateFormData: (state, action) => {
       state.formData = { ...state.formData, ...action.payload };
     },
@@ -94,6 +127,12 @@ const adPostSlice = createSlice({
         action.payload * state.pricing.pricePerExtraImage;
     },
 
+    // 🔥 NEW: Manually set page ID in formData (optional, if needed)
+    setPageId: (state, action) => {
+      state.formData.page = action.payload;
+      console.log("🔥 Page ID manually set to:", action.payload);
+    },
+
     resetAdPost: () => initialState,
   },
 });
@@ -102,12 +141,15 @@ export const {
   setStep,
   setAdType,
   setUploadedAdId,
+  setAccountType,
+  setSelectedPage,
   updateFormData,
   updateSpecialQuestions,
   updateContact,
   setTypeOfAds,
   updatePricing,
   setExtraImagesCount,
+  setPageId, // 🔥 NEW: Export setPageId action
   resetAdPost,
 } = adPostSlice.actions;
 

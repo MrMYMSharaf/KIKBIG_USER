@@ -5,6 +5,8 @@ import {
   setStep,
   setAdType,
   setTypeOfAds,
+  setAccountType,
+  setSelectedPage,
   resetAdPost,
 } from "../../features/redux/adPostSlice";
 
@@ -18,7 +20,7 @@ const PostAdsPage = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { type } = useParams();
-  const { step, formData } = useSelector((state) => state.adPost);
+  const { step, formData, accountType, selectedPage } = useSelector((state) => state.adPost);
 
   // Handle URL parameter changes
   useEffect(() => {
@@ -50,9 +52,20 @@ const PostAdsPage = () => {
     }
   }, [type, dispatch]);
 
-  // Handle choosing ad type
-  const handleChoose = (selectedType) => {
-    const urlType = selectedType.toLowerCase();
+  // Handle choosing ad type - UPDATED to handle account and page selection
+  const handleChoose = (data) => {
+    const { postType, accountType, page } = data;
+    
+    console.log("📌 User selected:", postType);
+    console.log("📌 Account type:", accountType);
+    console.log("📌 Selected page:", page);
+
+    // Set account type and selected page in Redux
+    dispatch(setAccountType(accountType));
+    dispatch(setSelectedPage(page));
+
+    // Navigate with the post type
+    const urlType = postType.toLowerCase();
     navigate(`/post-ads/${urlType}`);
   };
 
@@ -81,8 +94,21 @@ const PostAdsPage = () => {
     } else if (step === "form") {
       navigate("/post-ads");
       dispatch(setStep("choose"));
+      // Clear account type and page when going back to choose
+      dispatch(setAccountType(null));
+      dispatch(setSelectedPage(null));
     }
   };
+
+  // 🔥 Debug: Log current values
+  useEffect(() => {
+    console.log("Current state:", {
+      step,
+      typeofads: formData.typeofads,
+      accountType,
+      selectedPage: selectedPage?.title || selectedPage?.pagename
+    });
+  }, [step, formData.typeofads, accountType, selectedPage]);
 
   return (
     <div className="min-h-screen">

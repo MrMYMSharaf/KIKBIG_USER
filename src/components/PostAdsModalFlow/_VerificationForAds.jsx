@@ -6,6 +6,9 @@ import { useCreateVerificationMutation } from "../../features/aiverificationoutp
 
 const _VerificationForAds = ({ onBack, onNext }) => {
   const uploadedAdId = useSelector((state) => state.adPost.uploadedAdId);
+  const accountType = useSelector((state) => state.adPost.accountType); // 🔥 NEW
+  const selectedPage = useSelector((state) => state.adPost.selectedPage); // 🔥 NEW
+  
   const [verificationResult, setVerificationResult] = useState(null);
   const [savingResult, setSavingResult] = useState(false);
   const [countdown, setCountdown] = useState(5);
@@ -19,6 +22,16 @@ const _VerificationForAds = ({ onBack, onNext }) => {
   const [createVerification] = useCreateVerificationMutation();
   
   const uploadedAd = advertisementData?.data || null;
+
+  // 🔥 NEW: Log account type info
+  useEffect(() => {
+    if (accountType) {
+      console.log("📌 Verification - Account Type:", accountType);
+      if (accountType === 'page' && selectedPage) {
+        console.log("📄 Verification - Selected Page:", selectedPage);
+      }
+    }
+  }, [accountType, selectedPage]);
 
   // Auto-run verification when ad data is available
   useEffect(() => {
@@ -187,6 +200,56 @@ const _VerificationForAds = ({ onBack, onNext }) => {
           </div>
         </div>
 
+        {/* 🔥 NEW: Account Type Display */}
+        {accountType && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-6 border-2 border-blue-200">
+            <div className="flex items-center gap-4">
+              <div className="text-5xl">
+                {accountType === 'page' ? '📄' : '👤'}
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-gray-900 mb-1">
+                  Posting As
+                </h3>
+                <div className="flex items-center gap-3">
+                  <p className="text-xl font-bold text-blue-600">
+                    {accountType === 'page' 
+                      ? (selectedPage?.pagename || selectedPage?.title || selectedPage?.name || 'Page')
+                      : 'Personal Account'}
+                  </p>
+                  {accountType === 'page' && selectedPage && (
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 rounded-full text-sm font-semibold">
+                        {selectedPage.category?.name || 'Page'}
+                      </span>
+                      <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                        selectedPage.pagetype?.isPaid || 
+                        ['vip', 'premium', 'standard'].some(type => 
+                          (selectedPage.pagetype?.name || '').toLowerCase().includes(type)
+                        )
+                          ? 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}>
+                        {selectedPage.pagetype?.name || selectedPage.pagetype?.typename || 'Basic'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {accountType === 'page' && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    This advertisement will be published under your page
+                  </p>
+                )}
+                {accountType === 'user' && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    This advertisement will be published from your personal account
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Verification Result Alert with Countdown */}
         {verificationResult && (
           <div className={`rounded-xl p-6 mb-6 shadow-md border-2 ${
@@ -298,6 +361,12 @@ const _VerificationForAds = ({ onBack, onNext }) => {
             <div className="bg-white rounded-2xl shadow-xl p-6">
               <h3 className="text-xl font-bold text-gray-900 mb-4 border-b pb-3">📋 Details</h3>
               <div className="space-y-4">
+                {/* 🔥 NEW: Ad Type Display */}
+                <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                  <label className="text-xs font-bold text-purple-700 uppercase">Ad Type</label>
+                  <p className="text-lg font-bold text-purple-900 mt-1">{uploadedAd.typeofads || 'Advertisement'}</p>
+                </div>
+                
                 <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
                   <label className="text-xs font-bold text-blue-700 uppercase">Title</label>
                   <p className="text-xl font-bold text-gray-900 mt-1">{uploadedAd.title}</p>
@@ -327,10 +396,22 @@ const _VerificationForAds = ({ onBack, onNext }) => {
                       <div><p className="text-xs text-blue-700 font-semibold">Phone</p><p className="text-sm font-bold">{uploadedAd.contact.phone}</p></div>
                     </div>
                   )}
+                  {uploadedAd.contact.whatsapp && (
+                    <div className="flex items-center gap-3 bg-green-50 p-3 rounded-lg">
+                      <span className="text-2xl">💬</span>
+                      <div><p className="text-xs text-green-700 font-semibold">WhatsApp</p><p className="text-sm font-bold">{uploadedAd.contact.whatsapp}</p></div>
+                    </div>
+                  )}
                   {uploadedAd.contact.email && (
                     <div className="flex items-center gap-3 bg-purple-50 p-3 rounded-lg">
                       <span className="text-2xl">📧</span>
                       <div><p className="text-xs text-purple-700 font-semibold">Email</p><p className="text-sm font-bold break-all">{uploadedAd.contact.email}</p></div>
+                    </div>
+                  )}
+                  {uploadedAd.contact.telegram && (
+                    <div className="flex items-center gap-3 bg-blue-50 p-3 rounded-lg">
+                      <span className="text-2xl">✈️</span>
+                      <div><p className="text-xs text-blue-700 font-semibold">Telegram</p><p className="text-sm font-bold">{uploadedAd.contact.telegram}</p></div>
                     </div>
                   )}
                 </div>
@@ -343,6 +424,8 @@ const _VerificationForAds = ({ onBack, onNext }) => {
               <div className="space-y-2">
                 {uploadedAd.location?.country?.name && <div className="flex justify-between py-2 border-b"><span className="text-sm text-gray-600">Country:</span><span className="text-sm font-bold">{uploadedAd.location.country.name}</span></div>}
                 {uploadedAd.location?.region?.name && <div className="flex justify-between py-2 border-b"><span className="text-sm text-gray-600">Region:</span><span className="text-sm font-bold">{uploadedAd.location.region.name}</span></div>}
+                {uploadedAd.location?.state?.name && <div className="flex justify-between py-2 border-b"><span className="text-sm text-gray-600">State:</span><span className="text-sm font-bold">{uploadedAd.location.state.name}</span></div>}
+                {uploadedAd.location?.district?.name && <div className="flex justify-between py-2 border-b"><span className="text-sm text-gray-600">District:</span><span className="text-sm font-bold">{uploadedAd.location.district.name}</span></div>}
               </div>
             </div>
           </div>

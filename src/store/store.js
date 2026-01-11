@@ -8,7 +8,7 @@ import { authApi } from "../features/authSlice";
 import { languageApi } from "../features/languageSlice";
 import { categoryApi } from "../features/categorySlice";
 import { locationApi } from "../features/locationSlice";
-import { adtypeApi } from "../features/adtypeSlice";
+import { adtypeApi } from "../features/adTypeSlice";
 import { usertypeApi } from "../features/UserTypesSlice";
 import { paymentApi } from "../features/paymentApiSlice";
 import { postadvertisementApi } from "../features/postadsSlice";

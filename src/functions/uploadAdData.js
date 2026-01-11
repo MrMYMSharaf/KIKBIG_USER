@@ -31,6 +31,12 @@ export const uploadAdData = async (adData) => {
     if (adData.price === undefined || adData.price === null) throw new Error("price is required but missing");
     if (!adData.category) throw new Error("category is required but missing");
     if (!adData.typeofads) throw new Error("typeofads is required but missing");
+    if (!adData.accountType) throw new Error("accountType is required but missing");
+
+    // 🔥 NEW: Validate page when posting as page
+    if (adData.accountType === 'page' && !adData.page) {
+      throw new Error("page is required when accountType is 'page'");
+    }
 
     // ✅ Convert images to base64
     let base64Images = [];
@@ -59,17 +65,18 @@ export const uploadAdData = async (adData) => {
       price: Number(adData.price),
       category: adData.category,
       images: base64Images,
+      accountType: adData.accountType, // 🔥 'user' or 'page'
+      typeofads: adData.typeofads, // 🔥 'Advertisement', 'Needs', or 'Offers'
     };
 
-    // 🔥 CRITICAL: Ensure typeofads is included
-    if (!adData.typeofads) {
-      console.error("❌ typeofads is missing from adData:", adData);
-      throw new Error("typeofads is required but not provided in adData");
-    }
-    payload.typeofads = adData.typeofads;
-
     console.log("🔥 typeofads value being sent:", payload.typeofads);
-    console.log("🔥 Full adData received:", adData);
+    console.log("🔥 accountType value being sent:", payload.accountType);
+
+    // 🔥 NEW: If posting as page, include page ID
+    if (adData.accountType === 'page' && adData.page) {
+      payload.page = adData.page; // This is the page ObjectId
+      console.log("📄 Posting as page with ID:", payload.page);
+    }
 
     // ✅ Include contact info if available
     if (adData.contact && Object.values(adData.contact).some(Boolean)) {
@@ -114,6 +121,9 @@ export const uploadAdData = async (adData) => {
     console.log("📋 Final payload:", {
       ...payload,
       images: `[${payload.images?.length || 0} base64 images]`,
+      accountType: payload.accountType,
+      page: payload.page || 'N/A',
+      typeofads: payload.typeofads,
     });
 
     // ✅ Dispatch RTK Query endpoint
@@ -122,20 +132,28 @@ export const uploadAdData = async (adData) => {
     ).unwrap();
 
     console.log("✅ Upload successful:", result);
-    // 🔥 NEW: Extract and store the uploaded ad ID
+    
+    // 🔥 Extract and store the uploaded ad ID
     const uploadedAdId = result?.data?._id || result?._id;
     
     if (uploadedAdId) {
       console.log("📌 Storing uploaded ad ID:", uploadedAdId);
       
-      // Import setUploadedAdId at the top of file
+      // Import setUploadedAdId
       const { setUploadedAdId } = await import("../features/redux/adPostSlice");
       store.dispatch(setUploadedAdId(uploadedAdId));
-      
-      // Also store in localStorage as backup
-      localStorage.setItem('lastUploadedAdId', uploadedAdId);
     } else {
       console.warn("⚠️ No ad ID found in response:", result);
+    }
+    
+    // 🔥 Log the final saved data
+    if (result?.data) {
+      console.log("✅ Advertisement saved with:", {
+        id: result.data._id,
+        accountType: result.data.accountType,
+        pageId: result.data.pageId,
+        typeofads: result.data.typeofads,
+      });
     }
     
     return result;

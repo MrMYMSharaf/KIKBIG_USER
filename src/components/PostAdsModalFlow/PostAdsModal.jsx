@@ -7,6 +7,8 @@ import {
   setStep,
   setAdType,
   setTypeOfAds,
+  setAccountType,
+  setSelectedPage,
   resetAdPost,
 } from "../../features/redux/adPostSlice";
 
@@ -17,7 +19,7 @@ import _VerificationForAds from "./_VerificationForAds";
 
 const PostAdsModal = ({ isOpen, onClose }) => {
   const dispatch = useDispatch();
-  const { step, formData } = useSelector((state) => state.adPost);
+  const { step, formData, accountType, selectedPage } = useSelector((state) => state.adPost);
 
   // 🔹 Handle refresh warning and reset
   useEffect(() => {
@@ -40,25 +42,33 @@ const PostAdsModal = ({ isOpen, onClose }) => {
     };
   }, [dispatch]);
 
-  // 🔹 Choose Type handler - FIXED
-  const handleChoose = (type) => {
-    // 🔥 FIX: Map user selection directly to correct typeofads value
+  // 🔹 Choose Type handler - UPDATED to handle account and page selection
+  const handleChoose = (data) => {
+    const { postType, accountType, page } = data;
+    
+    // 🔥 Map user selection to correct typeofads value
     let typeOfAds;
     
-    if (type === "Ads") {
+    if (postType === "Ads") {
       typeOfAds = "Advertisement";
-    } else if (type === "Need") {
+    } else if (postType === "Need") {
       typeOfAds = "Needs";
-    } else if (type === "Offer") {
+    } else if (postType === "Offer") {
       typeOfAds = "Offers";
     }
 
-    console.log("📌 User selected:", type);
+    console.log("📌 User selected:", postType);
+    console.log("📌 Account type:", accountType);
+    console.log("📌 Selected page:", page);
     console.log("📌 Setting typeofads to:", typeOfAds);
 
+    // Set account type and selected page
+    dispatch(setAccountType(accountType));
+    dispatch(setSelectedPage(page));
+    
     // Set both adType (for UI) and typeofads (for backend)
-    dispatch(setAdType(type));          // UI display type (Ads, Need, Offer)
-    dispatch(setTypeOfAds(typeOfAds));  // Backend value (Advertisement, Needs, Offers)
+    dispatch(setAdType(postType));          // UI display type (Ads, Need, Offer)
+    dispatch(setTypeOfAds(typeOfAds));      // Backend value (Advertisement, Needs, Offers)
     dispatch(setStep("form"));
   };
 
@@ -80,10 +90,14 @@ const PostAdsModal = ({ isOpen, onClose }) => {
     onClose();
   };
 
-  // 🔥 Debug: Log current typeofads value
+  // 🔥 Debug: Log current values
   useEffect(() => {
-    console.log("Current formData.typeofads:", formData.typeofads);
-  }, [formData.typeofads]);
+    console.log("Current state:", {
+      typeofads: formData.typeofads,
+      accountType,
+      selectedPage: selectedPage?.title || selectedPage?.pagename
+    });
+  }, [formData.typeofads, accountType, selectedPage]);
 
   return (
     <Modal
@@ -120,7 +134,11 @@ const PostAdsModal = ({ isOpen, onClose }) => {
           <h2 className="text-2xl font-bold text-green-600">Published!</h2>
           <p className="text-center">
             Your <strong>{formData.typeofads}</strong> has been successfully
-            verified and published.
+            verified and published
+            {accountType === 'page' && selectedPage && (
+              <span> as <strong>{selectedPage.title || selectedPage.pagename}</strong></span>
+            )}
+            .
           </p>
           <button
             onClick={handleClose}
@@ -135,3 +153,4 @@ const PostAdsModal = ({ isOpen, onClose }) => {
 };
 
 export default PostAdsModal;
+

@@ -39,7 +39,7 @@ export const postadvertisementApi = createApi({
 
     getAdvertisementById: builder.query({
       query: (id) => ({
-        url: `/api/advertisement/${id}`,
+        url: `/api/advertisement/view/${id}`,
         method: "GET",
       }),
       providesTags: (result, error, id) => [{ type: "Advertisement", id }],

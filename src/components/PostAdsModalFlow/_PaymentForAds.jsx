@@ -17,6 +17,10 @@ const PaymentForAds = ({ onBack, onNext }) => {
   const pricePerExtraImage = useSelector((state) => state.adPost.pricing.pricePerExtraImage);
   const formDataFromRedux = useSelector((state) => state.adPost.formData);
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
+  
+  // 🔥 FIXED: Get account type and selected page from Redux
+  const accountType = useSelector((state) => state.adPost.accountType);
+  const selectedPage = useSelector((state) => state.adPost.selectedPage);
 
   
   
@@ -104,60 +108,75 @@ const PaymentForAds = ({ onBack, onNext }) => {
 
   const handlePaymentClick = async () => {
     if (!isAuthenticated) {
-  alert("Please login to post an ad");
-  return;
-}
- 
+      alert("Please login to post an ad");
+      return;
+    }
 
-  if (!selectedAdType) {
-    alert("Please select ad type");
-    return;
-  }
+    if (!selectedAdType) {
+      alert("Please select ad type");
+      return;
+    }
 
-  try {
-    // FREE AD
-    if (costBreakdown.isFree) {
-      await uploadAdData({
+    // 🔥 FIXED: Validate accountType before proceeding
+    if (!accountType) {
+      console.error("❌ accountType is missing!");
+      alert("Account type is missing. Please go back and select your account type.");
+      return;
+    }
+
+    try {
+      // 🔥 FIXED: Build the upload payload with accountType and selectedPage
+      const uploadPayload = {
         ...formDataFromRedux,
         adType: selectedAdType._id,
-        totalCost: 0,
+        accountType: accountType, // 'user' or 'page'
+        ...(accountType === 'page' && selectedPage && { 
+          page: selectedPage._id || selectedPage.id 
+        }),
+        countryCode: getCountryInfo.code,
+      };
+
+      console.log("📤 Upload payload being sent:", uploadPayload);
+
+      // FREE AD
+      if (costBreakdown.isFree) {
+        await uploadAdData({
+          ...uploadPayload,
+          totalCost: 0,
+          currency: costBreakdown.currency,
+        });
+
+        onNext();
+        return;
+      }
+
+      // PAID AD
+      const paymentSuccess = await handlePayment({
+        amount: costBreakdown.totalCost,
         currency: costBreakdown.currency,
+        adType: selectedAdType.name,
         countryCode: getCountryInfo.code,
       });
 
+      if (!paymentSuccess) {
+        alert("Payment failed");
+        return;
+      }
+
+      await uploadAdData({
+        ...uploadPayload,
+        price: costBreakdown.adTypeCost,
+        extraImagesCost: costBreakdown.extraImagesCost,
+        totalCost: costBreakdown.totalCost,
+        currency: costBreakdown.currency,
+      });
+
       onNext();
-      return;
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong");
     }
-
-    // PAID AD
-    const paymentSuccess = await handlePayment({
-      amount: costBreakdown.totalCost,
-      currency: costBreakdown.currency,
-      adType: selectedAdType.name,
-      countryCode: getCountryInfo.code,
-    });
-
-    if (!paymentSuccess) {
-      alert("Payment failed");
-      return;
-    }
-
-    await uploadAdData({
-      ...formDataFromRedux,
-      adType: selectedAdType._id,
-      price: costBreakdown.adTypeCost,
-      extraImagesCost: costBreakdown.extraImagesCost,
-      totalCost: costBreakdown.totalCost,
-      currency: costBreakdown.currency,
-      countryCode: getCountryInfo.code,
-    });
-
-    onNext();
-  } catch (err) {
-    console.error(err);
-    alert("Something went wrong");
-  }
-};
+  };
 
 
   // Progress Steps
@@ -273,6 +292,44 @@ const PaymentForAds = ({ onBack, onNext }) => {
             </div>
           </div>
         </div>
+
+        {/* 🔥 NEW: Account Type Display Banner */}
+        {accountType && (
+          <div className="bg-white rounded-xl shadow-lg p-4 mb-6 border-2 border-blue-200">
+            <div className="flex items-center gap-4">
+              <div className="text-4xl">
+                {accountType === 'page' ? '📄' : '👤'}
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wide mb-1">
+                  Posting As
+                </h3>
+                <p className="text-xl font-bold text-blue-600">
+                  {accountType === 'page' 
+                    ? (selectedPage?.pagename || selectedPage?.title || selectedPage?.name || 'Page')
+                    : 'Personal Account'}
+                </p>
+                {accountType === 'page' && selectedPage && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">
+                      {selectedPage.category?.name || 'Page'}
+                    </span>
+                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                      selectedPage.pagetype?.isPaid || 
+                      ['vip', 'premium', 'standard'].some(type => 
+                        (selectedPage.pagetype?.name || '').toLowerCase().includes(type)
+                      )
+                        ? 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {selectedPage.pagetype?.name || selectedPage.pagetype?.typename || 'Basic'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Header Section */}
         <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl overflow-hidden mb-4 sm:mb-6 border border-gray-100">
@@ -492,4 +549,3 @@ const PaymentForAds = ({ onBack, onNext }) => {
 };
 
 export default PaymentForAds;
-

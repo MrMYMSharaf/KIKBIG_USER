@@ -1,16 +1,23 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { setAccountType, setSelectedPage, setTypeOfAds } from "../../features/redux/adPostSlice";
+import { useGetMyPagesQuery } from "../../features/pageApiSlice";
 
 const Choose = ({ handleChoose, handleClose }) => {
+  const dispatch = useDispatch();
   const [hoveredButton, setHoveredButton] = useState(null);
   const [selectedType, setSelectedType] = useState(null); // 'user' or 'page'
-  const [selectedPage, setSelectedPage] = useState(null);
+  const [selectedPage, setSelectedPageLocal] = useState(null);
 
-  // Mock data - replace with actual user pages
-  const userPages = [
-    { id: 1, name: "My Business Page", category: "Business" },
-    { id: 2, name: "Community Group", category: "Community" },
-    { id: 3, name: "Product Store", category: "Shopping" },
-  ];
+  // Fetch user's pages from API
+  const { data: pagesData, isLoading, isError } = useGetMyPagesQuery({
+    page: 1,
+    limit: 100,
+    status: "active", // Only fetch active pages
+  });
+
+  const userPages = pagesData?.pages || [];
+  const hasPages = userPages.length > 0;
 
   // Define background images for each button hover state
   const backgroundImages = {
@@ -29,22 +36,82 @@ const Choose = ({ handleChoose, handleClose }) => {
 
   const handleTypeSelection = (type) => {
     setSelectedType(type);
+    dispatch(setAccountType(type));
+    
     if (type === 'user') {
-      setSelectedPage(null);
+      setSelectedPageLocal(null);
+      dispatch(setSelectedPage(null));
     }
   };
 
   const handlePageSelection = (page) => {
-    setSelectedPage(page);
+    setSelectedPageLocal(page);
+    dispatch(setSelectedPage(page));
   };
 
   const handleFinalChoice = (postType) => {
+    dispatch(setTypeOfAds(postType));
+    
     handleChoose({
       postType,
       accountType: selectedType,
       page: selectedType === 'page' ? selectedPage : null
     });
   };
+
+  // ✅ Helper function to get page type display name
+  const getPageTypeName = (page) => {
+    if (!page?.pagetype) return 'Basic';
+    
+    const pageTypeName = page.pagetype.name || page.pagetype.typename || '';
+    return pageTypeName || 'Basic';
+  };
+
+  // ✅ Helper function to check if page is paid (VIP, Premium, Standard)
+  const isPagePaid = (page) => {
+    if (!page?.pagetype) return false;
+    
+    // Check isPaid field first
+    if (page.pagetype.isPaid === true) return true;
+    if (page.pagetype.isPaid === false) return false;
+    
+    // Fallback: check by name
+    const pageTypeName = (page.pagetype.name || page.pagetype.typename || '').toLowerCase();
+    const paidTypes = ['vip', 'premium', 'standard'];
+    return paidTypes.some(type => pageTypeName.includes(type));
+  };
+
+  // ✅ Determine which post types are available based on account type and page type
+  const getAvailablePostTypes = () => {
+    // Personal account can ONLY post Ads and Need (NO Offer)
+    if (selectedType === 'user') {
+      return ['Ads', 'Need'];
+    }
+
+    // Page account - check if page type is Basic (free) or paid (VIP/Premium/Standard)
+    if (selectedType === 'page' && selectedPage) {
+      // If page is PAID (VIP, Premium, Standard), can post all types including Offer
+      if (isPagePaid(selectedPage)) {
+        return ['Ads', 'Need', 'Offer'];
+      }
+      
+      // If page is BASIC (free), can only post Ads and Need
+      return ['Ads', 'Need'];
+    }
+
+    // Default fallback
+    return ['Ads', 'Need'];
+  };
+
+  const availablePostTypes = getAvailablePostTypes();
+
+  // If user has no pages, skip to user selection automatically
+  useEffect(() => {
+    if (!isLoading && !hasPages) {
+      setSelectedType('user');
+      dispatch(setAccountType('user'));
+    }
+  }, [isLoading, hasPages, dispatch]);
 
   return (
     <div
@@ -67,8 +134,23 @@ const Choose = ({ handleChoose, handleClose }) => {
           <span className="group-hover:rotate-90 transition-transform duration-300">✕</span>
         </button>
 
-        {/* Step 1: Choose User or Page */}
-        {!selectedType && (
+        {/* Loading State */}
+        {isLoading && (
+          <div className="text-center space-y-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="text-gray-600">Loading your pages...</p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {isError && (
+          <div className="text-center space-y-4">
+            <p className="text-red-600">Failed to load pages. Proceeding with personal account.</p>
+          </div>
+        )}
+
+        {/* Step 1: Choose User or Page (only if user has pages) */}
+        {!isLoading && hasPages && !selectedType && (
           <>
             <div className="text-center space-y-2">
               <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-primary via-blue-600 to-purple-600 bg-clip-text text-transparent tracking-tight">
@@ -88,7 +170,7 @@ const Choose = ({ handleChoose, handleClose }) => {
                 <div className="relative flex flex-col items-center space-y-3">
                   <div className="text-5xl sm:text-6xl group-hover:scale-110 transition-transform duration-300">👤</div>
                   <span className="group-hover:tracking-wider transition-all duration-300">Personal Account</span>
-                  <p className="text-xs sm:text-sm opacity-80">Post as yourself</p>
+                  <p className="text-xs sm:text-sm opacity-80">Post Ads & Needs</p>
                 </div>
 
                 <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
@@ -118,7 +200,10 @@ const Choose = ({ handleChoose, handleClose }) => {
           <>
             <div className="text-center space-y-2">
               <button
-                onClick={() => setSelectedType(null)}
+                onClick={() => {
+                  setSelectedType(null);
+                  dispatch(setAccountType(null));
+                }}
                 className="text-gray-600 hover:text-gray-800 mb-2 flex items-center gap-2 mx-auto"
               >
                 <span>←</span> Back
@@ -130,26 +215,42 @@ const Choose = ({ handleChoose, handleClose }) => {
             </div>
 
             <div className="w-full space-y-3 max-h-96 overflow-y-auto">
-              {userPages.map((page) => (
-                <button
-                  key={page.id}
-                  onClick={() => handlePageSelection(page)}
-                  className="w-full group relative overflow-hidden p-4 bg-gradient-to-r from-gray-50 to-gray-100 hover:from-orange-50 hover:to-orange-100 rounded-xl transition-all duration-300 transform hover:scale-102 hover:shadow-lg border-2 border-gray-200 hover:border-orange-400"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white text-xl sm:text-2xl font-bold group-hover:scale-110 transition-transform duration-300">
-                      {page.name.charAt(0)}
+              {userPages.map((page) => {
+                const pageTypeName = getPageTypeName(page);
+                const isPaid = isPagePaid(page);
+                
+                return (
+                  <button
+                    key={page._id || page.id}
+                    onClick={() => handlePageSelection(page)}
+                    className="w-full group relative overflow-hidden p-4 bg-gradient-to-r from-gray-50 to-gray-100 hover:from-orange-50 hover:to-orange-100 rounded-xl transition-all duration-300 transform hover:scale-102 hover:shadow-lg border-2 border-gray-200 hover:border-orange-400"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white text-xl sm:text-2xl font-bold group-hover:scale-110 transition-transform duration-300">
+                        {(page.pagename || page.title || 'P').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 text-left">
+                        <h3 className="font-bold text-gray-800 text-base sm:text-lg group-hover:text-orange-700 transition-colors">
+                          {page.pagename || page.title || page.name || 'Untitled Page'}
+                        </h3>
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-xs sm:text-sm text-gray-500">
+                            {page.category?.name || page.category || 'Page'}
+                          </p>
+                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                            isPaid 
+                              ? 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white' 
+                              : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {pageTypeName}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-orange-500 group-hover:translate-x-1 transition-transform">→</div>
                     </div>
-                    <div className="flex-1 text-left">
-                      <h3 className="font-bold text-gray-800 text-base sm:text-lg group-hover:text-orange-700 transition-colors">
-                        {page.name}
-                      </h3>
-                      <p className="text-xs sm:text-sm text-gray-500">{page.category}</p>
-                    </div>
-                    <div className="text-orange-500 group-hover:translate-x-1 transition-transform">→</div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           </>
         )}
@@ -161,9 +262,11 @@ const Choose = ({ handleChoose, handleClose }) => {
               <button
                 onClick={() => {
                   if (selectedType === 'page' && selectedPage) {
-                    setSelectedPage(null);
+                    setSelectedPageLocal(null);
+                    dispatch(setSelectedPage(null));
                   } else {
                     setSelectedType(null);
+                    dispatch(setAccountType(null));
                   }
                 }}
                 className="text-gray-600 hover:text-gray-800 mb-2 flex items-center gap-2 mx-auto"
@@ -176,70 +279,87 @@ const Choose = ({ handleChoose, handleClose }) => {
               <p className="text-gray-600 text-sm sm:text-base">
                 {selectedType === 'user' 
                   ? "Posting as Personal Account" 
-                  : `Posting as ${selectedPage.name}`}
+                  : `Posting as ${selectedPage?.pagename || selectedPage?.title || selectedPage?.name || 'Page'}`}
               </p>
+              {selectedType === 'page' && selectedPage && (
+                <p className="text-xs text-gray-500">
+                  {isPagePaid(selectedPage)
+                    ? `✨ ${getPageTypeName(selectedPage)} - All post types available (Ads, Need, Offer)` 
+                    : `📌 ${getPageTypeName(selectedPage)} - Can post Ads & Need`}
+                </p>
+              )}
             </div>
 
             {/* Buttons Grid - Responsive Layout */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 w-full">
               {/* Ads Button */}
-              <button
-                className={`group relative overflow-hidden px-6 py-6 sm:py-8 bg-gradient-to-br ${buttonColors.Ads} text-white rounded-2xl font-bold text-lg sm:text-xl hover:shadow-2xl transition-all duration-500 transform hover:scale-105 active:scale-95 border-2 border-transparent hover:border-blue-300`}
-                onClick={() => handleFinalChoice("Ads")}
-                onMouseEnter={() => setHoveredButton("Ads")}
-                onMouseLeave={() => setHoveredButton(null)}
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-400 to-blue-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                
-                <div className="relative flex flex-col items-center space-y-2">
-                  <div className="text-4xl sm:text-5xl group-hover:scale-110 transition-transform duration-300">📢</div>
-                  <span className="group-hover:tracking-wider transition-all duration-300">Ads</span>
-                  <p className="text-xs sm:text-sm opacity-80">Promote your business</p>
-                </div>
+              {availablePostTypes.includes('Ads') && (
+                <button
+                  className={`group relative overflow-hidden px-6 py-6 sm:py-8 bg-gradient-to-br ${buttonColors.Ads} text-white rounded-2xl font-bold text-lg sm:text-xl hover:shadow-2xl transition-all duration-500 transform hover:scale-105 active:scale-95 border-2 border-transparent hover:border-blue-300`}
+                  onClick={() => handleFinalChoice("Ads")}
+                  onMouseEnter={() => setHoveredButton("Ads")}
+                  onMouseLeave={() => setHoveredButton(null)}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-400 to-blue-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                  
+                  <div className="relative flex flex-col items-center space-y-2">
+                    <div className="text-4xl sm:text-5xl group-hover:scale-110 transition-transform duration-300">📢</div>
+                    <span className="group-hover:tracking-wider transition-all duration-300">Ads</span>
+                    <p className="text-xs sm:text-sm opacity-80">Promote your business</p>
+                  </div>
 
-                <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-              </button>
+                  <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                </button>
+              )}
 
               {/* Need Button */}
-              <button
-                className={`group relative overflow-hidden px-6 py-6 sm:py-8 bg-gradient-to-br ${buttonColors.Need} text-white rounded-2xl font-bold text-lg sm:text-xl hover:shadow-2xl transition-all duration-500 transform hover:scale-105 active:scale-95 border-2 border-transparent hover:border-purple-300`}
-                onClick={() => handleFinalChoice("Need")}
-                onMouseEnter={() => setHoveredButton("Need")}
-                onMouseLeave={() => setHoveredButton(null)}
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-400 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                
-                <div className="relative flex flex-col items-center space-y-2">
-                  <div className="text-4xl sm:text-5xl group-hover:scale-110 transition-transform duration-300">🔍</div>
-                  <span className="group-hover:tracking-wider transition-all duration-300">Need</span>
-                  <p className="text-xs sm:text-sm opacity-80">Looking for something</p>
-                </div>
+              {availablePostTypes.includes('Need') && (
+                <button
+                  className={`group relative overflow-hidden px-6 py-6 sm:py-8 bg-gradient-to-br ${buttonColors.Need} text-white rounded-2xl font-bold text-lg sm:text-xl hover:shadow-2xl transition-all duration-500 transform hover:scale-105 active:scale-95 border-2 border-transparent hover:border-purple-300`}
+                  onClick={() => handleFinalChoice("Need")}
+                  onMouseEnter={() => setHoveredButton("Need")}
+                  onMouseLeave={() => setHoveredButton(null)}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-400 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                  
+                  <div className="relative flex flex-col items-center space-y-2">
+                    <div className="text-4xl sm:text-5xl group-hover:scale-110 transition-transform duration-300">🔍</div>
+                    <span className="group-hover:tracking-wider transition-all duration-300">Need</span>
+                    <p className="text-xs sm:text-sm opacity-80">Looking for something</p>
+                  </div>
 
-                <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-              </button>
+                  <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                </button>
+              )}
 
               {/* Offer Button */}
-              <button
-                className={`group relative overflow-hidden px-6 py-6 sm:py-8 bg-gradient-to-br ${buttonColors.Offer} text-white rounded-2xl font-bold text-lg sm:text-xl hover:shadow-2xl transition-all duration-500 transform hover:scale-105 active:scale-95 border-2 border-transparent hover:border-green-300`}
-                onClick={() => handleFinalChoice("Offer")}
-                onMouseEnter={() => setHoveredButton("Offer")}
-                onMouseLeave={() => setHoveredButton(null)}
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-green-400 to-green-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                
-                <div className="relative flex flex-col items-center space-y-2">
-                  <div className="text-4xl sm:text-5xl group-hover:scale-110 transition-transform duration-300">🎁</div>
-                  <span className="group-hover:tracking-wider transition-all duration-300">Offer</span>
-                  <p className="text-xs sm:text-sm opacity-80">Share your services</p>
-                </div>
+              {availablePostTypes.includes('Offer') && (
+                <button
+                  className={`group relative overflow-hidden px-6 py-6 sm:py-8 bg-gradient-to-br ${buttonColors.Offer} text-white rounded-2xl font-bold text-lg sm:text-xl hover:shadow-2xl transition-all duration-500 transform hover:scale-105 active:scale-95 border-2 border-transparent hover:border-green-300`}
+                  onClick={() => handleFinalChoice("Offer")}
+                  onMouseEnter={() => setHoveredButton("Offer")}
+                  onMouseLeave={() => setHoveredButton(null)}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-400 to-green-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                  
+                  <div className="relative flex flex-col items-center space-y-2">
+                    <div className="text-4xl sm:text-5xl group-hover:scale-110 transition-transform duration-300">🎁</div>
+                    <span className="group-hover:tracking-wider transition-all duration-300">Offer</span>
+                    <p className="text-xs sm:text-sm opacity-80">Share your services</p>
+                  </div>
 
-                <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-              </button>
+                  <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                </button>
+              )}
             </div>
 
             {/* Bottom hint text */}
             <p className="text-gray-500 text-xs sm:text-sm text-center italic">
-              Click on any option to continue
+              {availablePostTypes.length === 2
+                ? "Upgrade to VIP, Premium, or Standard page to unlock Offers"
+                : availablePostTypes.length === 3
+                ? "All post types available"
+                : "Click on any option to continue"}
             </p>
           </>
         )}
@@ -266,3 +386,5 @@ const Choose = ({ handleChoose, handleClose }) => {
 };
 
 export default Choose;
+
+

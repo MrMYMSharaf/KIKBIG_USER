@@ -57,7 +57,7 @@ export const pageApiSlice = createApi({
       query: (slug) => `/page/slug/${slug}`,
       providesTags: (result, error, slug) => [{ type: "Page", id: slug }],
     }),
-
+  
     // UPDATE Page
     updatePage: builder.mutation({
       query: ({ id, ...updateData }) => ({
@@ -91,3 +91,4 @@ export const {
   useUpdatePageMutation,
   useDeletePageMutation,
 } = pageApiSlice;
+
