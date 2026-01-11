@@ -1,5 +1,7 @@
 import '@fortawesome/fontawesome-free/css/all.min.css';
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect } from 'react';
+import { useSelector } from 'react-redux';
 import Layout from './components/shared/Layout';
 import Categories from './components/pages/Categories';
 import Offers from './components/pages/Offers';
@@ -26,19 +28,49 @@ import ShowPageProfile from './components/pages/ShowPageProfile';
 import Page_create from './components/pages/Page_demo/Page_create.jsx';
 import PageDetail from './components/pages/PageDetail.jsx';
 import PageEdit from './components/pages/Pageedit.jsx';
+import LocationRedirect from './LocationRedirect';
 
 import PrivateRoute from './Middleware/PrivateRoute';
 
 function App() {
+  // Clear old cached data on first load
+  useEffect(() => {
+    const hasCleared = sessionStorage.getItem('cacheCleared');
+    if (!hasCleared) {
+      console.log('🧹 Clearing old cache...');
+      // Only clear if the stored country is "india"
+      const persistedData = localStorage.getItem('persist:root');
+      if (persistedData) {
+        try {
+          const parsed = JSON.parse(persistedData);
+          if (parsed.country) {
+            const countryData = JSON.parse(parsed.country);
+            if (countryData.country === 'india') {
+              localStorage.removeItem('persist:root');
+              localStorage.removeItem('detectedCountry');
+              localStorage.removeItem('lastDetectionTime');
+              console.log('✓ Cleared old India default');
+            }
+          }
+        } catch (e) {
+          console.log('Error parsing cache:', e);
+        }
+      }
+      sessionStorage.setItem('cacheCleared', 'true');
+    }
+  }, []);
+
   return (
     <Router>
+      {/* Add LocationRedirect component here - it runs on every route */}
+      <LocationRedirect />
+      
       <Routes>
-
         {/* MAIN LAYOUT */}
         <Route path="/" element={<Layout />}>
 
-          {/* DEFAULT INDEX */}
-          <Route index element={<Categories />} />
+          {/* ROOT - Redirect to location-based viewallads */}
+          <Route index element={<RootRedirect />} />
 
           {/* MULTI-SEGMENT FIRST */}
           <Route path=":countrySlug/viewallads" element={<ViewAllAds />} />
@@ -56,17 +88,12 @@ function App() {
           {/* SINGLE SEGMENT COUNTRY */}
           <Route path=":countrySlug" element={<Categories />} />
 
-           {/* STATIC FIRST */}
-
           {/* STATIC ROUTES */}
           <Route path=":countrySlug/page" element={<PrivateRoute><Page /></PrivateRoute>} />
           <Route path="/pages/create" element={<PrivateRoute><Page_create /></PrivateRoute>} />
-          {/* PageDetail is now PUBLIC - anyone can view pages */}
           <Route path="/page/:id" element={<PageDetail />} />
-          {/* PageEdit remains PRIVATE - only logged in users can edit */}
           <Route path="/pages/:id/edit" element={<PrivateRoute><PageEdit /></PrivateRoute>} />
 
-          
           <Route path="ShowPageProfile/:id" element={<PrivateRoute><ShowPageProfile /></PrivateRoute>} />
           <Route path="groups" element={<PrivateRoute><Groups /></PrivateRoute>} />
           <Route path="myads" element={<PrivateRoute><Myads /></PrivateRoute>} />
@@ -76,7 +103,6 @@ function App() {
           <Route path="AdDetailPage/:id" element={<AdDetailPage />} />
           <Route path="UserSettingsPage" element={<PrivateRoute><UserSettingsPage /></PrivateRoute>} />
           <Route path="Demo" element={<Demo />} />
-      
 
           <Route path="*" element={<NoPage />} />
         </Route>
@@ -95,11 +121,36 @@ function App() {
           <Route path="NoticeAtCollection" element={<NoticeAtCollection />} />
           <Route path="callback" element={<AuthCallback />} />
         </Route>
-
       </Routes>
     </Router>
   );
 }
 
-export default App;
+// Component to handle root redirect based on detected country
+function RootRedirect() {
+  const country = useSelector((state) => state.country?.country);
+  
+  // Show loading while detecting
+  if (!country || country === "null") {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        fontSize: '18px',
+        color: '#666'
+      }}>
+        <div>
+          <div style={{ marginBottom: '10px' }}>🌍 Detecting your location...</div>
+          <div style={{ fontSize: '14px' }}>Please wait...</div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Redirect to detected country
+  return <Navigate to={`/${country}/viewallads`} replace />;
+}
 
+export default App;
