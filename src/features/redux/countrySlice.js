@@ -1,7 +1,7 @@
 import { createSlice } from "@reduxjs/toolkit";
 import { REHYDRATE } from "redux-persist";
 
-const initialState = { country: "india" };
+const initialState = { country: null };
 
 const countrySlice = createSlice({
   name: "country",
