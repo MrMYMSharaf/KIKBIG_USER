@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { useAdtypeQuery } from "../../features/adtypeSlice";
+import { useAdtypeQuery } from "../../features/AdTypeSlice";
 import { useLocationQuery } from "../../features/locationSlice";
 import { uploadAdData } from "../../functions/uploadAdData";
 import { handlePayment } from "../../functions/handlePayment";
