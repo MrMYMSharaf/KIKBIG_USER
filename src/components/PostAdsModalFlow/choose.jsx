@@ -91,12 +91,12 @@ const Choose = ({ handleChoose, handleClose }) => {
     // Page account - check if page type is Basic (free) or paid (VIP/Premium/Standard)
     if (selectedType === 'page' && selectedPage) {
       // If page is PAID (VIP, Premium, Standard), can post all types including Offer
-      if (isPagePaid(selectedPage)) {
-        return ['Ads', 'Need', 'Offer'];
-      }
+      // if (isPagePaid(selectedPage)) {
+      //   return ['Ads', 'Need', 'Offer'];
+      // }
       
       // If page is BASIC (free), can only post Ads and Need
-      return ['Ads', 'Need'];
+      return ['Ads', 'Need', 'Offer'];
     }
 
     // Default fallback

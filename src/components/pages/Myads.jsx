@@ -25,13 +25,11 @@ const Myads = () => {
   const [postAdsModalOpen, setPostAdsModalOpen] = useState(false);
   const [selectedAd, setSelectedAd] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState("all"); // all, advertisement, need, offer
-  const [statusFilter, setStatusFilter] = useState("all"); // all, active, pending, sold
+  const [activeTab, setActiveTab] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  // Get authentication status from Redux
   const isAuthenticated = useSelector((state) => state.auth?.isAuthenticated);
 
-  // Get current user data from API
   const { data: currentUserData, isLoading: authLoading } = useGetCurrentUserQuery(undefined, {
     skip: !isAuthenticated,
   });
@@ -39,31 +37,27 @@ const Myads = () => {
   const openPostAdsModal = () => setPostAdsModalOpen(true);
   const closePostAdsModal = () => setPostAdsModalOpen(false);
 
-  // Redirect if not authenticated
   if (!isAuthenticated && !authLoading) {
     return <Navigate to="/auth" replace />;
   }
 
-  // Fetch only current user's ads
   const { data, isLoading, isError, refetch } = useGetMyAdvertisementsQuery(
     {
       page: 1,
       limit: 100,
     },
     {
-      skip: !isAuthenticated, // Skip if not authenticated
+      skip: !isAuthenticated,
     }
   );
 
   const [deleteAd, { isLoading: isDeleting }] = useDeleteAdvertisementMutation();
 
-  // Helper to normalize type string for comparison
   const normalizeType = (type) => {
     if (!type) return 'advertisement';
     return type.toString().toLowerCase().trim();
   };
 
-  // Helper for status color
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
       case "active":
@@ -77,7 +71,6 @@ const Myads = () => {
     }
   };
 
-  // Helper for type badge color
   const getTypeBadgeColor = (type) => {
     const normalized = normalizeType(type);
     switch (normalized) {
@@ -94,7 +87,6 @@ const Myads = () => {
     }
   };
 
-  // Helper for type icon
   const getTypeIcon = (type) => {
     const normalized = normalizeType(type);
     switch (normalized) {
@@ -111,7 +103,6 @@ const Myads = () => {
     }
   };
 
-  // Helper for display text
   const getTypeDisplayText = (type) => {
     const normalized = normalizeType(type);
     switch (normalized) {
@@ -128,7 +119,6 @@ const Myads = () => {
     }
   };
 
-  // Handle ad delete with SweetAlert
   const handleDelete = async (id, title) => {
     const result = await Swal.fire({
       title: 'Are you sure?',
@@ -170,7 +160,6 @@ const Myads = () => {
     }
   };
 
-  // Loading states
   if (authLoading || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -198,17 +187,14 @@ const Myads = () => {
     );
   }
 
-  // Adjust data mapping for your backend structure
   const ads = data?.data || [];
 
-  // Filter by tab (type) - FIXED: Case-insensitive comparison
   const tabFilteredAds = activeTab === "all" 
     ? ads 
     : ads.filter((ad) => {
         const adType = normalizeType(ad.typeofads);
         const filterType = activeTab.toLowerCase();
         
-        // Handle plural forms
         if (filterType === 'need') {
           return adType === 'need' || adType === 'needs';
         }
@@ -219,17 +205,14 @@ const Myads = () => {
         return adType === filterType;
       });
 
-  // Filter by status
   const statusFilteredAds = statusFilter === "all"
     ? tabFilteredAds
     : tabFilteredAds.filter((ad) => ad.status?.toLowerCase() === statusFilter.toLowerCase());
 
-  // Search filter
   const filteredAds = statusFilteredAds.filter((ad) =>
     ad.title?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Count by type - FIXED: Case-insensitive counting
   const counts = {
     all: ads.length,
     advertisement: ads.filter(ad => normalizeType(ad.typeofads) === 'advertisement').length,
@@ -353,22 +336,21 @@ const Myads = () => {
                 {/* Ad Image */}
                 <div className="relative">
                   <img
-                    src={
-                      ad.images?.[0] || "https://via.placeholder.com/300x200"
-                    }
+                    src={ad.images?.[0] || "https://via.placeholder.com/300x200"}
                     alt={ad.title}
                     className="w-full h-48 object-cover"
                   />
-                  <div className="absolute top-4 right-4">
-                    <button
-                      onClick={() => setSelectedAd(ad)}
-                      className="bg-white/70 p-2 rounded-full hover:bg-white/90 transition"
-                    >
-                      <MoreVertical className="text-gray-700" size={20} />
-                    </button>
-                  </div>
+
+                  {/* More Options Button */}
+                  <button
+                    onClick={() => setSelectedAd(ad)}
+                    className="absolute top-4 left-4 bg-white/70 p-2 rounded-full hover:bg-white/90 transition"
+                  >
+                    <MoreVertical className="text-gray-700" size={20} />
+                  </button>
+
                   {/* Type Badge */}
-                  <div className="absolute top-4 left-4">
+                  <div className="absolute bottom-4 left-4">
                     <span className={`${getTypeBadgeColor(ad.typeofads)} text-white px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1`}>
                       {getTypeIcon(ad.typeofads)}
                       {getTypeDisplayText(ad.typeofads)}
@@ -384,9 +366,7 @@ const Myads = () => {
                       {ad.price ? `Rs. ${ad.price.toLocaleString()}` : "N/A"}
                     </span>
                     <span
-                      className={`px-3 py-1 rounded-full text-xs ${getStatusColor(
-                        ad.status
-                      )}`}
+                      className={`px-3 py-1 rounded-full text-xs ${getStatusColor(ad.status)}`}
                     >
                       {ad.status || "Unknown"}
                     </span>
@@ -445,7 +425,6 @@ const Myads = () => {
               <div className="space-y-2">
                 <button 
                   onClick={() => {
-                    // Navigate to edit page
                     window.location.href = `/edit-ad/${selectedAd._id}`;
                   }}
                   className="w-full flex items-center justify-center py-3 hover:bg-gray-100 rounded transition"

@@ -3,11 +3,12 @@ import { useSelector } from "react-redux";
 import { useGetAdvertisementByIdQuery } from "../../features/postadsSlice";
 import { useVerifyItemMutation } from "../../features/AwsVerficationapislice";
 import { useCreateVerificationMutation } from "../../features/aiverificationoutputSlice";
+import { useUpdateAdvertisementStatusMutation } from "../../features/postadsSlice";
 
 const _VerificationForAds = ({ onBack, onNext }) => {
   const uploadedAdId = useSelector((state) => state.adPost.uploadedAdId);
-  const accountType = useSelector((state) => state.adPost.accountType); // 🔥 NEW
-  const selectedPage = useSelector((state) => state.adPost.selectedPage); // 🔥 NEW
+  const accountType = useSelector((state) => state.adPost.accountType);
+  const selectedPage = useSelector((state) => state.adPost.selectedPage);
   
   const [verificationResult, setVerificationResult] = useState(null);
   const [savingResult, setSavingResult] = useState(false);
@@ -20,10 +21,11 @@ const _VerificationForAds = ({ onBack, onNext }) => {
   );
   const [verifyItem, { isLoading: isVerifying }] = useVerifyItemMutation();
   const [createVerification] = useCreateVerificationMutation();
+  const [updateAdStatus] = useUpdateAdvertisementStatusMutation();
   
   const uploadedAd = advertisementData?.data || null;
 
-  // 🔥 NEW: Log account type info
+  // Log account type info
   useEffect(() => {
     if (accountType) {
       console.log("📌 Verification - Account Type:", accountType);
@@ -33,7 +35,7 @@ const _VerificationForAds = ({ onBack, onNext }) => {
     }
   }, [accountType, selectedPage]);
 
-  // Auto-run verification when ad data is available
+  // 🔥 UPDATED: Auto-run verification when ad data is available
   useEffect(() => {
     const runVerification = async () => {
       if (!uploadedAd) return;
@@ -56,30 +58,82 @@ const _VerificationForAds = ({ onBack, onNext }) => {
 
       try {
         // Step 1: Get verification from AWS Lambda
+        console.log("🔍 Starting AI verification...");
         const result = await verifyItem(payload).unwrap();
         console.log("✅ AWS Verification Result:", result);
         
         setVerificationResult(result);
 
-        // Step 2: Save the result to your backend database
+        // Step 2: Save the verification result to database
         setSavingResult(true);
         try {
+          // 🔥 FIX: Properly handle null values from AWS Lambda response
           const savePayload = {
             ad_id: uploadedAdId,
             success: result.success,
             message: result.message,
-            image_check: result.image_check,
-            text_check: result.text_check
+            image_check: result.image_check || {
+              passed: false,
+              checked_count: 0,
+              unsafe_count: 0,
+              results: []
+            },
+            text_check: {
+              passed: result.text_check?.passed ?? false,
+              is_safe: result.text_check?.is_safe ?? false,  // ✅ Convert null to false
+              is_relevant: result.text_check?.is_relevant ?? false,  // ✅ Convert null to false
+              issues: result.text_check?.issues || [],
+              reason: result.text_check?.reason || ""
+            }
           };
-          console.log("🟦 Save Payload:", savePayload);
+          
+          console.log("💾 Saving verification to DB:", savePayload);
+          
           const savedResult = await createVerification(savePayload).unwrap();
           console.log("✅ Verification saved to DB:", savedResult);
           
-          // Step 3: Start countdown for auto-redirect (both success and failure)
+          // 🔥 Step 3: Update advertisement status based on verification result
+          const newStatus = result.success ? "active" : "Ai_Blocked";
+          console.log(`🔄 Updating ad status to: ${newStatus}`);
+          
+          try {
+            await updateAdStatus({
+              id: uploadedAdId,
+              status: newStatus,
+              verificationResult: result
+            }).unwrap();
+            
+            console.log(`✅ Ad status successfully updated to: ${newStatus}`);
+            
+            // Refetch the ad to get updated status
+            refetch();
+            
+          } catch (statusError) {
+            console.error("❌ Failed to update ad status:", statusError);
+            // Continue anyway - verification is saved, just status update failed
+          }
+          
+          // Step 4: Start countdown for auto-redirect
           setAutoRedirect(true);
           
         } catch (saveError) {
           console.error("❌ Failed to save verification result:", saveError);
+          console.error("Error details:", saveError?.data || saveError);
+          
+          // 🔥 Even if saving failed, try to block the ad if verification failed
+          if (!result.success) {
+            try {
+              await updateAdStatus({
+                id: uploadedAdId,
+                status: "Ai_Blocked",
+                verificationResult: result
+              }).unwrap();
+              console.log("✅ Ad blocked despite save error");
+            } catch (statusError) {
+              console.error("❌ Failed to block ad:", statusError);
+            }
+          }
+          
           // Still start countdown even if saving failed
           setAutoRedirect(true);
         } finally {
@@ -104,13 +158,30 @@ const _VerificationForAds = ({ onBack, onNext }) => {
           statusCode: err?.status || "CORS_ERROR"
         });
         
+        // 🔥 Block the ad when verification fails or has errors
+        try {
+          console.log("🚫 Blocking ad due to verification failure/error");
+          await updateAdStatus({
+            id: uploadedAdId,
+            status: "Ai_Blocked",
+            verificationResult: {
+              success: false,
+              error: err?.data?.message || err?.error || "Verification failed",
+              isCorsError
+            }
+          }).unwrap();
+          console.log("✅ Ad blocked due to verification error");
+        } catch (statusError) {
+          console.error("❌ Failed to block ad after verification error:", statusError);
+        }
+        
         // Start countdown even on error
         setAutoRedirect(true);
       }
     };
 
     runVerification();
-  }, [uploadedAd, verifyItem, createVerification, uploadedAdId]);
+  }, [uploadedAd, verifyItem, createVerification, uploadedAdId, updateAdStatus, refetch]);
 
   // Countdown timer and auto-redirect
   useEffect(() => {
@@ -200,7 +271,7 @@ const _VerificationForAds = ({ onBack, onNext }) => {
           </div>
         </div>
 
-        {/* 🔥 NEW: Account Type Display */}
+        {/* Account Type Display */}
         {accountType && (
           <div className="bg-white rounded-2xl shadow-lg p-6 mb-6 border-2 border-blue-200">
             <div className="flex items-center gap-4">
@@ -245,6 +316,35 @@ const _VerificationForAds = ({ onBack, onNext }) => {
                     This advertisement will be published from your personal account
                   </p>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🔥 Status Display */}
+        {uploadedAd && (
+          <div className={`rounded-xl p-4 mb-6 border-2 ${
+            uploadedAd.status === 'active' 
+              ? 'bg-green-50 border-green-300' 
+              : uploadedAd.status === 'Ai_Blocked'
+              ? 'bg-red-50 border-red-300'
+              : 'bg-yellow-50 border-yellow-300'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className="text-2xl">
+                {uploadedAd.status === 'active' ? '✅' : uploadedAd.status === 'Ai_Blocked' ? '🚫' : '⏳'}
+              </div>
+              <div>
+                <p className="font-bold text-sm">Current Status:</p>
+                <p className={`text-lg font-bold ${
+                  uploadedAd.status === 'active' 
+                    ? 'text-green-700' 
+                    : uploadedAd.status === 'Ai_Blocked'
+                    ? 'text-red-700'
+                    : 'text-yellow-700'
+                }`}>
+                  {uploadedAd.status === 'active' ? 'Active' : uploadedAd.status === 'Ai_Blocked' ? 'AI Blocked' : 'Inactive'}
+                </p>
               </div>
             </div>
           </div>
@@ -338,7 +438,7 @@ const _VerificationForAds = ({ onBack, onNext }) => {
           </div>
         )}
 
-        {/* Main Content */}
+        {/* Main Content - Ad Preview */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Ad Preview */}
           <div className="lg:col-span-2 space-y-6">
@@ -361,7 +461,7 @@ const _VerificationForAds = ({ onBack, onNext }) => {
             <div className="bg-white rounded-2xl shadow-xl p-6">
               <h3 className="text-xl font-bold text-gray-900 mb-4 border-b pb-3">📋 Details</h3>
               <div className="space-y-4">
-                {/* 🔥 NEW: Ad Type Display */}
+                {/* Ad Type Display */}
                 <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
                   <label className="text-xs font-bold text-purple-700 uppercase">Ad Type</label>
                   <p className="text-lg font-bold text-purple-900 mt-1">{uploadedAd.typeofads || 'Advertisement'}</p>
@@ -453,3 +553,4 @@ const _VerificationForAds = ({ onBack, onNext }) => {
 };
 
 export default _VerificationForAds;
+

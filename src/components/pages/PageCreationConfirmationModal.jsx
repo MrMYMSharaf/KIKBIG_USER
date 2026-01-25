@@ -67,11 +67,17 @@ const PageCreationConfirmationModal = ({
       } else {
         console.log('❌ Payment failed or cancelled');
         setIsProcessingPayment(false);
+        // Swal.fire({
+        //   icon: "error",
+        //   title: "Payment Cancelled",
+        //   text: "Page creation was not completed.",
+        // });
         Swal.fire({
-          icon: "error",
-          title: "Payment Cancelled",
-          text: "Page creation was not completed.",
-        });
+            icon: "info",
+            title: "Payments Not Available",
+            text: "Sorry, we don’t have a payment gateway at the moment. Currently, only free Page are supported.",
+            confirmButtonText: "OK",
+          });
       }
     } catch (error) {
       console.error('❌ Payment error:', error);

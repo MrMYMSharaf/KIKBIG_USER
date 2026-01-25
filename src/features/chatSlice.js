@@ -3,36 +3,48 @@ import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 export const chatApi = createApi({
   reducerPath: "chatApi",
   baseQuery: fetchBaseQuery({
-    baseUrl: "http://localhost:4000/api",
-    credentials: 'include', // Important: This sends HTTP-only cookies with requests
+    baseUrl: "http://localhost:4000/mychatgroup",
+    credentials: "include", // 🔥 sends JWT cookies
     prepareHeaders: (headers) => {
       headers.set("Content-Type", "application/json");
       return headers;
     },
   }),
-  tagTypes: ["Messages"],
+  tagTypes: ["Messages", "ChatList"],
   endpoints: (builder) => ({
-    // ✅ Send a new message
+
+    // --------------------------------------------------
+    // SEND MESSAGE (senderId from JWT)
+    // --------------------------------------------------
     sendMessage: builder.mutation({
-      query: (body) => ({
+      query: ({ receiverId, receiverType, message }) => ({
         url: "/message",
         method: "POST",
-        body,
+        body: { receiverId, receiverType, message }, // ✅ Added receiverType
       }),
-      invalidatesTags: ["Messages"],
+      invalidatesTags: ["Messages", "ChatList"],
     }),
 
-    // ✅ Get chat messages between two users (auto marks as read)
+    // --------------------------------------------------
+    // GET MESSAGES (logged-in user from JWT)
+    // --------------------------------------------------
     getMessages: builder.query({
-      query: ({ senderId, receiverId }) =>
-        `/messages?senderId=${senderId}&receiverId=${receiverId}`,
+      query: ({ receiverId, receiverType }) => ({
+        url: `/messages?receiverId=${receiverId}&receiverType=${receiverType}`, // ✅ Added receiverType
+        method: "GET",
+      }),
       providesTags: ["Messages"],
     }),
 
-    // ✅ Get chat list
+    // --------------------------------------------------
+    // GET CHAT LIST (userId from JWT)
+    // --------------------------------------------------
     getChatList: builder.query({
-      query: (userId) => `/messages/chats/${userId}`,
-      providesTags: ["Messages"],
+      query: () => ({
+        url: "/messages/chats",
+        method: "GET",
+      }),
+      providesTags: ["ChatList"],
     }),
   }),
 });

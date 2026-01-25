@@ -57,11 +57,6 @@ const PostAdsModal = ({ isOpen, onClose }) => {
       typeOfAds = "Offers";
     }
 
-    console.log("📌 User selected:", postType);
-    console.log("📌 Account type:", accountType);
-    console.log("📌 Selected page:", page);
-    console.log("📌 Setting typeofads to:", typeOfAds);
-
     // Set account type and selected page
     dispatch(setAccountType(accountType));
     dispatch(setSelectedPage(page));

@@ -38,13 +38,13 @@ export const postadvertisementApi = createApi({
     }),
 
     getAdvertisementById: builder.query({
-      query: (id) => ({
-        url: `/api/advertisement/view/${id}`,
-        method: "GET",
-      }),
-      providesTags: (result, error, id) => [{ type: "Advertisement", id }],
-    }),
-
+  query: (id) => ({
+    url: `/api/advertisement/view/${id}`,
+    method: "GET",
+  }),
+  providesTags: (result, error, id) => [{ type: "Advertisement", id }],
+  keepUnusedDataFor: 5, // Cache for only 5 seconds
+}),
     getAllAdvertisementsAds: builder.query({
       query: ({ page = 1, limit = 10 } = {}) => ({
         url: `/api/advertisement/ads`,
@@ -73,24 +73,34 @@ export const postadvertisementApi = createApi({
     }),
 
     // ✅ SLUG-BASED: Get advertisements by category/subcategory using slugs
-    getAdvertisementsByCategory: builder.query({
-  query: ({ countrySlug, categorySlug, subCategorySlug, page = 1, limit = 10 }) => {
-    let url = '/api/advertisement';
+  // In src/features/postadsSlice.js
+
+// src/features/postadsSlice.js
+
+getAdvertisementsByCategory: builder.query({
+  query: ({ countrySlug, mode, categorySlug, subCategorySlug, page = 1, limit = 10 }) => {
+    let url = '/api';
     
+    // ✅ FIXED: Include mode in URL path
     if (countrySlug && categorySlug) {
-      url += `/${countrySlug}/${categorySlug}`;
+      const modeSegment = mode || 'viewallads'; // default to viewallads
+      url += `/${countrySlug}/${modeSegment}/${categorySlug}`;
       
-      // ✅ only append if subCategorySlug is truthy
+      // Only add subcategory if it exists and is valid
       if (subCategorySlug && subCategorySlug !== "undefined") {
         url += `/${subCategorySlug}`;
       }
     } else if (categorySlug) {
-      url += `/all/${categorySlug}`;
+      // Only category, no country
+      const modeSegment = mode || 'viewallads';
+      url += `/${modeSegment}/${categorySlug}`;
       
       if (subCategorySlug && subCategorySlug !== "undefined") {
         url += `/${subCategorySlug}`;
       }
     }
+
+    console.log('🔍 API URL being called:', url); // Debug log
 
     return {
       url,
@@ -144,6 +154,18 @@ getOffersByCountry: builder.query({
       ],
     }),
 
+    updateAdvertisementStatus: builder.mutation({
+  query: ({ id, status, verificationResult }) => ({
+    url: `/api/advertisement/${id}/status`,
+    method: "PUT",
+    body: { status, verificationResult },
+  }),
+  invalidatesTags: (result, error, { id }) => [
+    { type: "Advertisement", id },
+    'Advertisement',
+  ],
+}),
+
     deleteAdvertisement: builder.mutation({
       query: (id) => ({
         url: `/api/advertisement/${id}`,
@@ -171,5 +193,6 @@ export const {
   useGetAdvertisementsAdsByCountryQuery,
   useGetNeedsByCountryQuery,
   useGetOffersByCountryQuery, 
+  useUpdateAdvertisementStatusMutation,
 } = postadvertisementApi;
 

@@ -6,8 +6,12 @@ import {
   useGetAdvertisementsByCategoryQuery,
   useGetAdvertisementsAdsByCountryQuery 
 } from "../../features/postadsSlice";
+import { useAddToCartMutation } from "../../features/AddTocartSlice";
+import { useDispatch, useSelector } from "react-redux";
+import { addItemToCart } from "../../features/redux/addTocardredux";
 import { useNavigate, useParams } from "react-router-dom";
 import AdvertisementSkeleton from "../component/SkeletonLoading/advertisementSkeleton.jsx";
+import Swal from "sweetalert2";
 
 const ViewAllAds = () => {
   const [layout, setLayout] = useState("grid");
@@ -15,12 +19,20 @@ const ViewAllAds = () => {
   const [allAds, setAllAds] = useState([]);
   const [hasMore, setHasMore] = useState(true);
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
+  const [addingToCartId, setAddingToCartId] = useState(null);
   const observerTarget = useRef(null);
 
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   
   // ✅ Extract all params including mode
   const { countrySlug, mode, categorySlug, subCategorySlug } = useParams();
+
+  // ✅ Get cart items from Redux
+  const cartItems = useSelector((state) => state.cart.items);
+
+  // ✅ Add to cart mutation (API call)
+  const [addToCart] = useAddToCartMutation();
 
   const sidebarAds = [
     "/ads/160_600.png",
@@ -40,7 +52,7 @@ const ViewAllAds = () => {
   } = categorySlug
     ? useGetAdvertisementsByCategoryQuery({
         countrySlug,
-        mode: mode || 'viewallads', // ✅ Pass the mode from URL
+        mode: mode || 'viewallads',
         categorySlug,
         subCategorySlug,
         page,
@@ -56,6 +68,86 @@ const ViewAllAds = () => {
           page,
           limit: 12
         });
+
+  // ✅ FIXED: Removed duplicate dispatch - Now only dispatches ONCE
+  const handleAddToCart = async (ad) => {
+    const { _id: post_id, title, images, price, typeofads } = ad;
+    
+    // Check if already in cart
+    const isAlreadyInCart = cartItems.some(item => item.post_id === post_id);
+    
+    if (isAlreadyInCart) {
+      const toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 2000,
+        timerProgressBar: true,
+      });
+
+      toast.fire({
+        icon: 'info',
+        title: 'Already in cart',
+        text: title
+      });
+      return;
+    }
+
+    setAddingToCartId(post_id);
+    
+    // ✅ STEP 1: Instant Redux update (optimistic) - ONLY ONCE!
+    dispatch(addItemToCart({
+      post_id,
+      title,
+      image: images?.[0] || '',
+      price,
+      typeofads,
+    }));
+
+    console.log('✅ Added to Redux cart:', { post_id, title });
+
+    // ✅ STEP 2: Show instant success feedback
+    const toast = Swal.mixin({
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 2000,
+      timerProgressBar: true,
+      didOpen: (toast) => {
+        toast.addEventListener('mouseenter', Swal.stopTimer);
+        toast.addEventListener('mouseleave', Swal.resumeTimer);
+      }
+    });
+
+    toast.fire({
+      icon: 'success',
+      title: '❤️ Added to cart!',
+      text: title
+    });
+
+    // ✅ STEP 3: Sync to backend in background (fire and forget)
+    try {
+      await addToCart({ post_id }).unwrap();
+      console.log('✅ Synced to backend:', title);
+    } catch (error) {
+      console.error('❌ Failed to sync to backend:', error);
+      
+      // If API fails, show error but keep in Redux
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'warning',
+        title: 'Sync issue',
+        text: 'Item added locally, but sync failed. Will retry later.',
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+      });
+    } finally {
+      // Clear loading state
+      setTimeout(() => setAddingToCartId(null), 300);
+    }
+  };
 
   // Only navigate on critical errors like 404 for invalid routes
   useEffect(() => {
@@ -295,6 +387,9 @@ const ViewAllAds = () => {
                       id={ad._id}
                       category={ad.category}
                       childCategory={ad.childCategory}
+                      onAddToCart={() => handleAddToCart(ad)}
+                      isAddingToCart={addingToCartId === ad._id}
+                      isInCart={cartItems.some(item => item.post_id === ad._id)}
                     />
                   )
                 )}

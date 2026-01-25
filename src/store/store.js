@@ -13,19 +13,24 @@ import { usertypeApi } from "../features/UserTypesSlice";
 import { paymentApi } from "../features/paymentApiSlice";
 import { postadvertisementApi } from "../features/postadsSlice";
 import { chatApi } from "../features/chatSlice";
-import { groupApi } from "../features/groupSlice";
 import { awsVerificationApi } from "../features/AwsVerficationapislice";
 import { aiVerificationApi } from "../features/aiverificationoutputSlice";
 import {pagetypeApi} from "../features/pagetypeApi";
 import {pageApiSlice} from "../features/pageApiSlice";
 import {imagePriceApiSlice} from "../features/page.imagePriceApi";
 import{pageFollowingApiSlice} from "../features/page.flowwingSlice";
+import {pageReviewApiSlice} from "../features/pageReviewApiSlice.js";
+import {imagePriceApi} from "../features/imagePriceSlice.js";
+import {AddTocartApi} from "../features/AddTocartSlice.js"
+import addToCartReducer from "../features/redux/addTocardredux";
 
 // Reducers
 import authReducer from "../features/redux/authSlice";
 import adPostReducer from "../features/redux/adPostSlice";
 import countryReducer from "../features/redux/countrySlice";
 import pageCreateReducer from "../features/redux/pagecreationSlice";
+
+import {searchApi} from "../features/searchSlice";
 
 // ---------------- Persist Configs ---------------- //
 // ✅ Auth persist - ONLY persist user and isAuthenticated (NO TOKEN!)
@@ -36,11 +41,11 @@ const authPersistConfig = {
 };
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
 
-// AdPost persist
+// 🔥 UPDATED: AdPost persist - Added accountType and selectedPage
 const adPostPersistConfig = {
   key: "adPost",
   storage,
-  whitelist: ["formData", "step", "adType"],
+  whitelist: ["formData", "step", "adType", "accountType", "selectedPage", "pricing"], // 🔥 Added accountType, selectedPage, and pricing
 };
 const persistedAdPostReducer = persistReducer(adPostPersistConfig, adPostReducer);
 
@@ -60,6 +65,14 @@ const pageCreatePersistConfig = {
 };
 const persistedPageCreateReducer = persistReducer(pageCreatePersistConfig, pageCreateReducer);
 
+// ✅ ADD CART PERSIST CONFIG
+const cartPersistConfig = {
+  key: "cart",
+  storage,
+  whitelist: ["items", "totalItems"],
+};
+const persistedCartReducer = persistReducer(cartPersistConfig, addToCartReducer);
+
 
 // ---------------- Store ---------------- //
 export const store = configureStore({
@@ -74,19 +87,24 @@ export const store = configureStore({
     [postadvertisementApi.reducerPath]: postadvertisementApi.reducer,
     [paymentApi.reducerPath]: paymentApi.reducer,
     [chatApi.reducerPath]: chatApi.reducer,
-    [groupApi.reducerPath]: groupApi.reducer,
     [awsVerificationApi.reducerPath]: awsVerificationApi.reducer,
     [aiVerificationApi.reducerPath]: aiVerificationApi.reducer,
     [pagetypeApi.reducerPath]: pagetypeApi.reducer,
     [pageApiSlice.reducerPath]: pageApiSlice.reducer,
     [imagePriceApiSlice.reducerPath]: imagePriceApiSlice.reducer,
     [pageFollowingApiSlice.reducerPath]: pageFollowingApiSlice.reducer,
+    [pageReviewApiSlice.reducerPath]:pageReviewApiSlice.reducer,
+    [imagePriceApi.reducerPath]:imagePriceApi.reducer,
+    [AddTocartApi.reducerPath]:AddTocartApi.reducer,
+    // Other reducers
+    [searchApi.reducerPath]: searchApi.reducer,
 
     // Persisted reducers
     auth: persistedAuthReducer,
     adPost: persistedAdPostReducer,
     country: persistedCountryReducer,
     pageCreate: persistedPageCreateReducer,
+    cart: persistedCartReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
@@ -107,13 +125,16 @@ export const store = configureStore({
       postadvertisementApi.middleware,
       paymentApi.middleware,
       chatApi.middleware,
-      groupApi.middleware,
       awsVerificationApi.middleware,
       aiVerificationApi.middleware,
       pagetypeApi.middleware,
       pageApiSlice.middleware,
       imagePriceApiSlice.middleware,
-      pageFollowingApiSlice.middleware
+      pageFollowingApiSlice.middleware,
+      pageReviewApiSlice.middleware,
+      imagePriceApi.middleware,
+      AddTocartApi.middleware,
+      searchApi.middleware,
     ),
 });
 

@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import Modal from 'react-modal';
+import React, { useState, useEffect } from 'react';
 import { HiOutlineSearch, HiOutlineBell, HiMenu } from 'react-icons/hi';
 import { ShoppingCart } from 'lucide-react';
 import { Menu } from '@headlessui/react';
@@ -14,10 +13,19 @@ const Searchslides = ({ toggleSidebar, onSearch }) => {
   const [searchQuery, setSearchQuery] = useState("");
 
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
-  const countrySlug = useSelector((state) => state.country.selectedCountry);
+  
+  // ✅ FIX: Match your Redux structure exactly
+  const countrySlug = useSelector((state) => state.country?.country);
+  
   const navigate = useNavigate();
   const location = useLocation();
  
+  // ✅ DEBUG: Log country on every render
+  useEffect(() => {
+    console.log('🌍 Current country slug:', countrySlug);
+    console.log('📍 Full country state:', useSelector.getState?.()?.country);
+  }, [countrySlug]);
+
   const { data } = useGetCurrentUserQuery(undefined, {
     skip: !isAuthenticated
   });
@@ -33,14 +41,26 @@ const Searchslides = ({ toggleSidebar, onSearch }) => {
   const handleSearch = (e) => {
     e.preventDefault();
     
-    if (searchQuery.trim()) {
-      // ✅ Navigate to unified search page with query
-      navigate(`/${countrySlug}/search?q=${encodeURIComponent(searchQuery.trim())}`);
-      
-      // If onSearch callback exists (from specific pages), also call it
-      if (onSearch) {
-        onSearch(searchQuery.trim());
-      }
+    if (!searchQuery.trim()) {
+      console.warn('⚠️ Empty search query');
+      return;
+    }
+
+    // ✅ Check country before navigating
+    if (!countrySlug || countrySlug === 'undefined' || countrySlug === 'null') {
+      console.error('❌ No country set! Current value:', countrySlug);
+      alert('Please wait while we detect your location...');
+      return;
+    }
+
+    const searchUrl = `/${countrySlug}/search?q=${encodeURIComponent(searchQuery.trim())}`;
+    console.log('🔍 Navigating to:', searchUrl);
+    
+    navigate(searchUrl);
+    
+    // If onSearch callback exists, also call it
+    if (onSearch) {
+      onSearch(searchQuery.trim());
     }
   };
 
@@ -59,7 +79,7 @@ const Searchslides = ({ toggleSidebar, onSearch }) => {
             >
               <HiMenu fontSize={24} />
             </button>
-            <Link to={`/${countrySlug}`}>
+            <Link to={countrySlug ? `/${countrySlug}` : '/'}>
               <img src={Logo} alt="Pedlar logo" className="h-14 w-auto drop-shadow-lg cursor-pointer" />
             </Link>
           </div>
@@ -68,7 +88,14 @@ const Searchslides = ({ toggleSidebar, onSearch }) => {
             {isAuthenticated ? (
               <>
                 <button
-                  onClick={() => navigate('/cart')}
+                  onClick={() => {
+                    // Check if cart route exists, otherwise show message
+                    try {
+                      navigate('/cart');
+                    } catch (error) {
+                      alert('Cart feature coming soon!');
+                    }
+                  }}
                   className="relative p-2.5 bg-white hover:bg-blue-50 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
                   aria-label="Shopping Cart"
                 >
@@ -99,14 +126,6 @@ const Searchslides = ({ toggleSidebar, onSearch }) => {
                             <button className={`${active ? 'bg-blue-50' : ''} block px-4 py-3 w-full text-left text-sm border-b transition-colors`}>
                               <p className="font-semibold text-gray-900">New message received</p>
                               <p className="text-xs text-gray-500 mt-1">2 minutes ago</p>
-                            </button>
-                          )}
-                        </Menu.Item>
-                        <Menu.Item>
-                          {({ active }) => (
-                            <button className={`${active ? 'bg-blue-50' : ''} block px-4 py-3 w-full text-left text-sm transition-colors`}>
-                              <p className="font-semibold text-gray-900">Your ad was approved</p>
-                              <p className="text-xs text-gray-500 mt-1">1 hour ago</p>
                             </button>
                           )}
                         </Menu.Item>
@@ -154,13 +173,6 @@ const Searchslides = ({ toggleSidebar, onSearch }) => {
                                 </span>
                               )}
                             </Link>
-                          )}
-                        </Menu.Item>
-                        <Menu.Item>
-                          {({ active }) => (
-                            <button className={`${active ? 'bg-blue-50' : ''} block px-4 py-2.5 w-full text-left font-semibold text-sm border-b transition-colors text-gray-700`}>
-                              Settings
-                            </button>
                           )}
                         </Menu.Item>
                         <Menu.Item>
@@ -216,7 +228,7 @@ const Searchslides = ({ toggleSidebar, onSearch }) => {
       {/* Desktop view */}
       <div className="hidden md:flex h-16 px-6 justify-between items-center">
         <div className="flex items-center gap-3">
-          <Link to={`/${countrySlug}`}>
+          <Link to={countrySlug ? `/${countrySlug}` : '/'}>
             <img src={Logo} alt="Pedlar logo" className="h-12 w-auto cursor-pointer" />
           </Link>
           
@@ -236,7 +248,13 @@ const Searchslides = ({ toggleSidebar, onSearch }) => {
           {isAuthenticated ? (
             <>
               <button
-                onClick={() => navigate('/cart')}
+                onClick={() => {
+                  try {
+                    navigate('/cart');
+                  } catch (error) {
+                    alert('Cart feature coming soon!');
+                  }
+                }}
                 className="relative p-2 hover:bg-gray-100 rounded-lg transition-all duration-200"
                 aria-label="Shopping Cart"
               >
@@ -264,14 +282,6 @@ const Searchslides = ({ toggleSidebar, onSearch }) => {
                           <button className={`${active ? 'bg-blue-50' : ''} block px-4 py-3 w-full text-left text-sm border-b transition-colors`}>
                             <p className="font-semibold text-gray-900">New message received</p>
                             <p className="text-xs text-gray-500 mt-1">2 minutes ago</p>
-                          </button>
-                        )}
-                      </Menu.Item>
-                      <Menu.Item>
-                        {({ active }) => (
-                          <button className={`${active ? 'bg-blue-50' : ''} block px-4 py-3 w-full text-left text-sm transition-colors`}>
-                            <p className="font-semibold text-gray-900">Your ad was approved</p>
-                            <p className="text-xs text-gray-500 mt-1">1 hour ago</p>
                           </button>
                         )}
                       </Menu.Item>
@@ -319,13 +329,6 @@ const Searchslides = ({ toggleSidebar, onSearch }) => {
                               </span>
                             )}
                           </Link>
-                        )}
-                      </Menu.Item>
-                      <Menu.Item>
-                        {({ active }) => (
-                          <button className={`${active ? 'bg-blue-50' : ''} block px-4 py-3 w-full text-left font-semibold text-sm border-b transition-colors text-gray-700`}>
-                            Settings
-                          </button>
                         )}
                       </Menu.Item>
                       <Menu.Item>

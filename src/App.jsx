@@ -28,6 +28,8 @@ import ShowPageProfile from './components/pages/ShowPageProfile';
 import Page_create from './components/pages/Page_demo/Page_create.jsx';
 import PageDetail from './components/pages/PageDetail.jsx';
 import PageEdit from './components/pages/Pageedit.jsx';
+import AddCart from './components/pages/AddCart';
+import UnifiedSearchPage from './components/pages/UnifiedSearchPage'; // ✅ New unified search page
 import LocationRedirect from './LocationRedirect';
 
 import PrivateRoute from './Middleware/PrivateRoute';
@@ -38,7 +40,6 @@ function App() {
     const hasCleared = sessionStorage.getItem('cacheCleared');
     if (!hasCleared) {
       console.log('🧹 Clearing old cache...');
-      // Only clear if the stored country is "india"
       const persistedData = localStorage.getItem('persist:root');
       if (persistedData) {
         try {
@@ -62,7 +63,6 @@ function App() {
 
   return (
     <Router>
-      {/* Add LocationRedirect component here - it runs on every route */}
       <LocationRedirect />
       
       <Routes>
@@ -72,7 +72,10 @@ function App() {
           {/* ROOT - Redirect to location-based viewallads */}
           <Route index element={<RootRedirect />} />
 
-          {/* MULTI-SEGMENT FIRST */}
+          {/* ✅ UNIFIED SEARCH ROUTE - YouTube-style search */}
+          <Route path=":countrySlug/search" element={<UnifiedSearchPage />} />
+
+          {/* MULTI-SEGMENT ROUTES */}
           <Route path=":countrySlug/viewallads" element={<ViewAllAds />} />
           <Route path=":countrySlug/viewallads/:categorySlug" element={<ViewAllAds />} />
           <Route path=":countrySlug/viewallads/:categorySlug/:subCategorySlug" element={<ViewAllAds />} />
@@ -104,6 +107,9 @@ function App() {
           <Route path="UserSettingsPage" element={<PrivateRoute><UserSettingsPage /></PrivateRoute>} />
           <Route path="Demo" element={<Demo />} />
 
+          {/* CART ROUTE */}
+          <Route path="cart" element={<PrivateRoute><AddCart /></PrivateRoute>} />
+
           <Route path="*" element={<NoPage />} />
         </Route>
 
@@ -130,7 +136,6 @@ function App() {
 function RootRedirect() {
   const country = useSelector((state) => state.country?.country);
   
-  // Show loading while detecting
   if (!country || country === "null") {
     return (
       <div style={{ 
@@ -149,8 +154,7 @@ function RootRedirect() {
     );
   }
   
-  // Redirect to detected country
-  return <Navigate to={`/${country}/viewallads`} replace />;
+  return <Navigate to={`/${country}`} replace />;
 }
 
 export default App;

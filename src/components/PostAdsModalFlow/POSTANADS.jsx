@@ -1,9 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { updateFormData, setExtraImagesCount,updateContact } from "../../features/redux/adPostSlice";
+import { 
+  updateFormData, 
+  updateContact,
+  updatePricing,
+} from "../../features/redux/adPostSlice";
 import { useLanguageQuery } from "../../features/languageSlice";
 import { useCategoryQuery } from "../../features/categorySlice";
 import { useLocationQuery } from "../../features/locationSlice";
+import { useGetImagePricesQuery } from "../../features/imagePriceSlice";
 import { Navigate } from "react-router-dom";
 import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
@@ -14,58 +19,16 @@ import DescriptionEditor from "../component/DescriptionEditor";
 import ImageUpload from "../component/ImageUpload";
 import CategorySelect from "./_CategorySelect";
 
-
-
 const POSTANADS = ({ onBack, onNext }) => {
   const dispatch = useDispatch();
   const formData = useSelector((state) => state.adPost.formData);
-  const isAuthenticated = useSelector(
-  (state) => state.auth.isAuthenticated
-);
-  
+  const pricingState = useSelector((state) => state.adPost.pricing);
+  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
 
+  // Fetch image prices
+  const { data: imagePricesData, isLoading: pricesLoading } = useGetImagePricesQuery();
 
-// if (authLoading) return null; // wait until auth check is done
-if (!isAuthenticated) return <Navigate to="/auth" replace />;
-
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-// Optional: dynamic subtitle helper (if needed separately)
-// ✅ Dynamic title and subtitle based on ad type
- const getAdHeaderTitle = () => {
-  const adType = formData.typeofads || formData.adType;
-  // console.log("Getting header title for:", adType);
-  
-  // Convert to lowercase and remove the 's' if present
-  const normalizedType = adType?.toLowerCase().replace(/s$/, '');
-  
-  switch (normalizedType) {
-    case "need":
-      return "Post Your Need";
-    case "offer":
-      return "Post Your Offer";
-    default:
-      return "Post Your Ad";
-  }
-};
-
-const getAdSubTitle = () => {
-  const adType = formData.typeofads || formData.adType;
-  
-  // Convert to lowercase and remove the 's' if present
-  const normalizedType = adType?.toLowerCase().replace(/s$/, '');
-  
-  switch (normalizedType) {
-    case "need":
-      return "Fill in the details to let others know what you're looking for";
-    case "offer":
-      return "Fill in the details to showcase your offer";
-    default:
-      return "Fill in the details below to create your listing";
-  }
-};
-/////////////////////////////////////////////////////////////////////////////////////////////////////
+  if (!isAuthenticated) return <Navigate to="/auth" replace />;
 
   const [locationOptions, setLocationOptions] = useState({
     regions: [],
@@ -80,95 +43,277 @@ const getAdSubTitle = () => {
     villages: [],
   });
 
-  // Use refs to track previous values and prevent unnecessary updates
-  const previousLocationValues = useRef({});
-
   // Fetch data from APIs
   const { data: languagesData } = useLanguageQuery();
   const { data: categoriesData } = useCategoryQuery();
   const { data: locationsData } = useLocationQuery();
 
   const languages = languagesData?.data || [];
-  // Only show categories where showAddPost === true
   const categories = (categoriesData?.data || []).filter(cat => cat.showAddPost);
   const countries = locationsData?.data || [];
 
-  // 🔥 NEW: Get category pricing data from backend
-  const getCategoryPricing = useCallback(() => {
-    if (!formData.childCategory || !categories.length) {
-      // Return default values if no category selected
+  // 🔥 Calculate tiered pricing from backend
+  const calculateImagePricing = useMemo(() => {
+    if (!imagePricesData?.data || pricesLoading || !countries.length || !formData.country) {
       return {
-        freeImages: 2,
-        pricePerExtraImage: 100,
-        maxImages: 10,
-        showImageUpload: true,
-        categoryName: ''
+        freeLimit: 2, // Default fallback
+        bundleLimit: 5,
+        bundlePrice: 0,
+        perImagePrice: 0,
+        currencySymbol: '$',
       };
     }
 
-    // Search through all categories and their children to find the selected one
+    const selectedCountry = countries.find(c => c._id === formData.country);
+    const countryCode = selectedCountry?.code?.toUpperCase() || 'USD';
+    
+    // // console.log("🔥 CALCULATING TIERED PRICING FOR:", countryCode);
+    
+    // Helper to get price from entry
+    const getPriceFromEntry = (entry) => {
+      if (!entry) return 0;
+      const pricesObj = entry.prices instanceof Map 
+        ? Object.fromEntries(entry.prices)
+        : entry.prices || {};
+      
+      // Try exact country match first
+      if (pricesObj[countryCode]) {
+        return pricesObj[countryCode].price;
+      }
+      
+      // Fallback to USD
+      return pricesObj.USD?.price || 0;
+    };
+
+    // 🔥 Get pricing entries from backend
+    const freeEntry = imagePricesData.data.find(item => item.type === "FREE");
+    const bundleEntry = imagePricesData.data.find(item => item.type === "BUNDLE");
+    const perImageEntry = imagePricesData.data.find(item => item.type === "PER_IMAGE");
+
+    // Currency symbol mapping
+    const symbols = { 
+      'LK': 'Rs.',
+      'AU': 'A$',
+      'AUD': 'A$',
+      'USD': '$',
+    };
+    const currency = symbols[countryCode] || '$';
+
+    const pricing = {
+      freeLimit: freeEntry?.imageLimit || 2, // 🔥 Dynamic from backend
+      bundleLimit: bundleEntry?.imageLimit || 5, // 🔥 Dynamic from backend
+      bundlePrice: getPriceFromEntry(bundleEntry),
+      perImagePrice: getPriceFromEntry(perImageEntry),
+      currencySymbol: currency,
+    };
+
+    // console.log("🔥 CALCULATED PRICING:", pricing);
+
+    return pricing;
+  }, [imagePricesData, pricesLoading, formData.country, countries]);
+
+  // 🔥 Calculate total cost based on number of images (TIERED)
+  const calculateTotalImageCost = useCallback((imageCount) => {
+    const { freeLimit, bundleLimit, bundlePrice, perImagePrice } = calculateImagePricing;
+    
+    //  console.log("💰 Calculating cost for", imageCount, "images with limits:", {
+    //   freeLimit,
+    //   bundleLimit,
+    // });
+    
+    if (imageCount <= freeLimit) {
+      // All images are free
+      return {
+        totalCost: 0,
+        breakdown: {
+          freeImages: imageCount,
+          bundleImages: 0,
+          perImageImages: 0,
+          bundleCost: 0,
+          perImageCost: 0,
+        }
+      };
+    }
+    
+    if (imageCount <= freeLimit + bundleLimit) {
+      // Free images + Bundle images
+      const bundleImagesCount = imageCount - freeLimit;
+      return {
+        totalCost: bundlePrice,
+        breakdown: {
+          freeImages: freeLimit,
+          bundleImages: bundleImagesCount,
+          perImageImages: 0,
+          bundleCost: bundlePrice,
+          perImageCost: 0,
+        }
+      };
+    }
+    
+    // Free images + Full bundle + Per-image pricing
+    const perImageCount = imageCount - freeLimit - bundleLimit;
+    const perImageTotal = perImageCount * perImagePrice;
+    
+    return {
+      totalCost: bundlePrice + perImageTotal,
+      breakdown: {
+        freeImages: freeLimit,
+        bundleImages: bundleLimit,
+        perImageImages: perImageCount,
+        bundleCost: bundlePrice,
+        perImageCost: perImageTotal,
+      }
+    };
+  }, [calculateImagePricing]);
+
+  // 🔥 Update Redux with tiered pricing info
+ useEffect(() => {
+  if (!imagePricesData || pricesLoading) return;
+
+  const imageCount = formData.images?.length || 0;
+  const costInfo = calculateTotalImageCost(imageCount);
+
+  const nextPricing = {
+    freeLimit: calculateImagePricing.freeLimit,
+    bundleLimit: calculateImagePricing.bundleLimit,
+    bundlePrice: calculateImagePricing.bundlePrice,
+    perImagePrice: calculateImagePricing.perImagePrice,
+    currencySymbol: calculateImagePricing.currencySymbol,
+    totalImageCost: costInfo.totalCost,
+    costBreakdown: costInfo.breakdown,
+  };
+
+  // 🔒 Prevent infinite loop
+  const hasChanged =
+    pricingState.totalImageCost !== nextPricing.totalImageCost ||
+    pricingState.bundlePrice !== nextPricing.bundlePrice ||
+    pricingState.perImagePrice !== nextPricing.perImagePrice ||
+    pricingState.freeLimit !== nextPricing.freeLimit ||
+    pricingState.bundleLimit !== nextPricing.bundleLimit ||
+    pricingState.currencySymbol !== nextPricing.currencySymbol;
+
+  if (hasChanged) {
+    dispatch(updatePricing(nextPricing));
+  }
+}, [
+  imagePricesData,
+  pricesLoading,
+  formData.country,
+  formData.images?.length,
+  calculateImagePricing,
+  calculateTotalImageCost,
+  pricingState,
+  dispatch
+]);
+
+  // 🔥 Get category pricing with tiered limits
+  const getCategoryPricing = useCallback(() => {
+    const { freeLimit, bundleLimit, perImagePrice, currencySymbol } = calculateImagePricing;
+
+    // console.log("📊 getCategoryPricing called with tiered pricing:", {
+    //   freeLimit,
+    //   bundleLimit,
+    //   perImagePrice,
+    //   currencySymbol,
+    //   childCategory: formData.childCategory
+    // });
+
+    if (!formData.childCategory || !categories.length) {
+      return {
+        freeImages: freeLimit,
+        bundleImages: bundleLimit,
+        maxImages: 10,
+        showImageUpload: true,
+        categoryName: '',
+        currencySymbol,
+      };
+    }
+
     for (const category of categories) {
-      // Check if this category has the selected child category
       if (category.children && category.children.length > 0) {
         const childCategory = category.children.find(
           child => child._id === formData.childCategory
         );
         
         if (childCategory) {
-          // 🔥 FIXED: Check parent category's showImageUpload first, then child's
           const parentShowImages = category.showImageUpload !== false;
           const childShowImages = childCategory.showImageUpload !== false;
           
           return {
-            freeImages: childCategory.freeImages || 2,
-            pricePerExtraImage: childCategory.pricePerExtraImage || 100,
+            freeImages: freeLimit,
+            bundleImages: bundleLimit,
             maxImages: childCategory.maxImages || 10,
-            showImageUpload: parentShowImages && childShowImages, // Both must be true
-            categoryName: childCategory.name
+            showImageUpload: parentShowImages && childShowImages,
+            categoryName: childCategory.name,
+            currencySymbol,
           };
         }
       }
       
-      // Also check if the parent category itself is selected
       if (category._id === formData.childCategory) {
         return {
-          freeImages: category.freeImages || 2,
-          pricePerExtraImage: category.pricePerExtraImage || 100,
+          freeImages: freeLimit,
+          bundleImages: bundleLimit,
           maxImages: category.maxImages || 10,
           showImageUpload: category.showImageUpload !== false,
-          categoryName: category.name
+          categoryName: category.name,
+          currencySymbol,
         };
       }
     }
 
-    // Fallback to default values
     return {
-      freeImages: 2,
-      pricePerExtraImage: 100,
+      freeImages: freeLimit,
+      bundleImages: bundleLimit,
       maxImages: 10,
       showImageUpload: true,
-      categoryName: ''
+      categoryName: '',
+      currencySymbol,
     };
-  }, [formData.childCategory, categories]);
+  }, [formData.childCategory, categories, calculateImagePricing]);
 
-  // 🔥 NEW: Memoize the category pricing data
-  const categoryPricing = useMemo(() => getCategoryPricing(), [getCategoryPricing]);
+  const categoryPricing = useMemo(() => {
+    const pricing = getCategoryPricing();
+    // console.log("📊 categoryPricing memoized:", pricing);
+    return pricing;
+  }, [getCategoryPricing]);
 
-  // Handle image upload
+  // Dynamic title and subtitle
+  const getAdHeaderTitle = () => {
+    const adType = formData.typeofads || formData.adType;
+    const normalizedType = adType?.toLowerCase().replace(/s$/, '');
+    
+    switch (normalizedType) {
+      case "need":
+        return "Post Your Need";
+      case "offer":
+        return "Post Your Offer";
+      default:
+        return "Post Your Ad";
+    }
+  };
+
+  const getAdSubTitle = () => {
+    const adType = formData.typeofads || formData.adType;
+    const normalizedType = adType?.toLowerCase().replace(/s$/, '');
+    
+    switch (normalizedType) {
+      case "need":
+        return "Fill in the details to let others know what you're looking for";
+      case "offer":
+        return "Fill in the details to showcase your offer";
+      default:
+        return "Fill in the details below to create your listing";
+    }
+  };
+
   const handleImageChange = useCallback((newImages) => {
     dispatch(updateFormData({ images: newImages }));
   }, [dispatch]);
 
-  // Add handler for extra images count
-  const handleExtraImagesChange = useCallback((count) => {
-    dispatch(setExtraImagesCount(count));
-  }, [dispatch]);
-
-  // ✅ Handler for special category specialQuestions
   const handleQuestionChange = useCallback((e) => {
     const { name, value } = e.target;
     
-    // Update the specialspecialQuestions object in formData
     dispatch(updateFormData({
       specialQuestions: {
         ...formData.specialQuestions,
@@ -177,23 +322,18 @@ const getAdSubTitle = () => {
     }));
   }, [dispatch, formData.specialQuestions]);
 
-  // ✅ Handle contact info updates (for regular text inputs like email and telegram)
   const handleContactChange = useCallback((e) => {
     const { name, value } = e.target;
     dispatch(updateContact({ [name]: value }));
   }, [dispatch]);
 
-  // ✅ NEW: Handle phone input changes (for PhoneInput components)
   const handlePhoneInputChange = useCallback((field, value) => {
     dispatch(updateContact({ [field]: value || "" }));
   }, [dispatch]);
 
-
-  // FIXED: Handle location field changes with proper reset logic
   const handleChange = useCallback((e) => {
     const { name, value } = e.target;
     
-    // Reset map for location fields
     const resetMap = {
       country: ['region', 'state', 'province', 'district', 'county', 'subDistrict', 'localAdministrativeUnit', 'municipality', 'town', 'village'],
       region: ['state', 'province', 'district', 'county', 'subDistrict', 'localAdministrativeUnit', 'municipality', 'town', 'village'],
@@ -205,12 +345,11 @@ const getAdSubTitle = () => {
       localAdministrativeUnit: ['municipality', 'town', 'village'],
       municipality: ['town', 'village'],
       town: ['village'],
-      category: ['childCategory'], // Reset child category when parent changes
+      category: ['childCategory'],
     };
 
     const updates = { [name]: value };
     
-    // Add reset fields if this field has dependencies
     if (resetMap[name]) {
       resetMap[name].forEach(field => {
         updates[field] = "";
@@ -226,76 +365,72 @@ const getAdSubTitle = () => {
     }
   }, [dispatch]);
 
-  // SIMPLIFIED location hierarchy management
-  useEffect(() => {
-    const updateLocationHierarchy = () => {
-      const selectedCountry = countries.find((c) => c._id === formData.country);
-      const regions = selectedCountry?.children || [];
+ // In POSTANADS.jsx, find this useEffect and update it:
+useEffect(() => {
+  const updateLocationHierarchy = () => {
+    const selectedCountry = countries.find((c) => c._id === formData.country);
+    const regions = selectedCountry?.children || [];
 
-      const selectedRegion = regions.find(r => r._id === formData.region);
-      const states = selectedRegion?.children || [];
+    const selectedRegion = regions.find(r => r._id === formData.region);
+    const states = selectedRegion?.children || [];
 
-      const selectedState = states.find(s => s._id === formData.state);
-      const provinces = selectedState?.children || [];
+    const selectedState = states.find(s => s._id === formData.state);
+    const provinces = selectedState?.children || [];
 
-      const selectedProvince = provinces.find(p => p._id === formData.province);
-      const districts = selectedProvince?.children || [];
+    const selectedProvince = provinces.find(p => p._id === formData.province);
+    const districts = selectedProvince?.children || [];
 
-      const selectedDistrict = districts.find(d => d._id === formData.district);
-      const counties = selectedDistrict?.children || [];
+    const selectedDistrict = districts.find(d => d._id === formData.district);
+    const counties = selectedDistrict?.children || [];
 
-      const selectedCounty = counties.find(c => c._id === formData.county);
-      const subDistricts = selectedCounty?.children || [];
+    const selectedCounty = counties.find(c => c._id === formData.county);
+    const subDistricts = selectedCounty?.children || [];
 
-      const selectedSubDistrict = subDistricts.find(sd => sd._id === formData.subDistrict);
-      const localAdministrativeUnits = selectedSubDistrict?.children || [];
+    const selectedSubDistrict = subDistricts.find(sd => sd._id === formData.subDistrict);
+    const localAdministrativeUnits = selectedSubDistrict?.children || [];
 
-      const selectedLAU = localAdministrativeUnits.find(lau => lau._id === formData.localAdministrativeUnit);
-      const municipalities = selectedLAU?.children || [];
+    const selectedLAU = localAdministrativeUnits.find(lau => lau._id === formData.localAdministrativeUnit);
+    const municipalities = selectedLAU?.children || [];
 
-      const selectedMunicipality = municipalities.find(m => m._id === formData.municipality);
-      const towns = selectedMunicipality?.children || [];
+    const selectedMunicipality = municipalities.find(m => m._id === formData.municipality);
+    const towns = selectedMunicipality?.children || [];
 
-      const selectedTown = towns.find(t => t._id === formData.town);
-      const villages = selectedTown?.children || [];
+    const selectedTown = towns.find(t => t._id === formData.town);
+    const villages = selectedTown?.children || [];
 
-      // Only update if something actually changed
-      const newLocationOptions = {
-        regions,
-        states,
-        provinces,
-        districts,
-        counties,
-        subDistricts,
-        localAdministrativeUnits,
-        municipalities,
-        towns,
-        villages,
-      };
-
-      if (JSON.stringify(newLocationOptions) !== JSON.stringify(locationOptions)) {
-        setLocationOptions(newLocationOptions);
-      }
+    const newLocationOptions = {
+      regions,
+      states,
+      provinces,
+      districts,
+      counties,
+      subDistricts,
+      localAdministrativeUnits,
+      municipalities,
+      towns,
+      villages,
     };
 
-    updateLocationHierarchy();
-  }, [
-    formData.country,
-    formData.region,
-    formData.state,
-    formData.province,
-    formData.district,
-    formData.county,
-    formData.subDistrict,
-    formData.localAdministrativeUnit,
-    formData.municipality,
-    formData.town,
-    countries,
-    locationOptions // Only depend on the entire locationOptions object
-  ]);
+    // 🔥 FIX: Always update, remove the comparison check
+    setLocationOptions(newLocationOptions);
+  };
 
+  updateLocationHierarchy();
+}, [
+  formData.country,
+  formData.region,
+  formData.state,
+  formData.province,
+  formData.district,
+  formData.county,
+  formData.subDistrict,
+  formData.localAdministrativeUnit,
+  formData.municipality,
+  formData.town,
+  countries,
+  // 🔥 REMOVED: locationOptions from dependencies
+]);
   const handleNext = () => {
-
     if (!formData.title?.trim()) {
       alert("Please enter a title for your ad");
       return;
@@ -307,20 +442,18 @@ const getAdSubTitle = () => {
     }
 
     if (!formData.typeofads) {
-    alert("⚠️ Ad type is missing! Please go back and select an ad type.");
-    console.error("❌ typeofads is missing from formData:", formData);
-    return;
-  }
+      alert("⚠️ Ad type is missing! Please go back and select an ad type.");
+      return;
+    }
 
-    // ✅ Validate required specialQuestions
     const selectedSubCategory = categories
       .find(cat => cat._id === formData.category)
       ?.children?.find(sub => sub._id === formData.childCategory);
 
     if (selectedSubCategory?.specialQuestions) {
-      const requiredspecialQuestions = selectedSubCategory.specialQuestions.filter(q => q.required);
+      const requiredQuestions = selectedSubCategory.specialQuestions.filter(q => q.required);
       
-      for (const question of requiredspecialQuestions) {
+      for (const question of requiredQuestions) {
         if (!formData.specialQuestions?.[question.key]) {
           alert(`Please fill in the required field: ${question.label}`);
           return;
@@ -328,20 +461,18 @@ const getAdSubTitle = () => {
       }
     }
 
-    // 🔥 UPDATED: Check if image upload is enabled for this category
     if (categoryPricing.showImageUpload && formData.images?.length === 0) {
       alert("Please upload at least one image");
       return;
     }
 
-    console.log("Form data:", formData);
-    console.log("Category pricing:", categoryPricing);
-     console.log("✅ All validations passed, proceeding to next step");
-  console.log("📋 Final formData being sent:", formData);
+    // console.log("✅ All validations passed, proceeding to next step");
+    // console.log("📋 Final formData being sent:", formData);
+    // console.log("💰 Pricing info:", categoryPricing);
+    // console.log("💰 Redux pricing state:", pricingState);
     onNext();
   };
 
-  // Progress Steps
   const steps = [
     { number: 1, label: "Ad Details", active: true },
     { number: 2, label: "Payment", active: false },
@@ -467,8 +598,34 @@ const getAdSubTitle = () => {
         {/* Main Form Section */}
         <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl p-4 sm:p-8 space-y-6 sm:space-y-8 border border-gray-100">
           
-          {/* Category & Language Section - UPDATED */}
-          <div className="space-y-4 sm:space-y-6">
+          {/* Location Section */}
+          <div className="space-y-3 sm:space-y-4">
+            <div className="border-l-4 border-primary pl-3 sm:pl-4 py-1">
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-900 font-playfair">Location</h3>
+              <p className="text-xs sm:text-sm text-gray-500 mt-1">Select your location (this determines pricing currency)</p>
+            </div>
+            <LocationSelect
+              countries={countries}
+              locationOptions={locationOptions}
+              locationValues={{
+                country: formData.country,
+                region: formData.region,
+                state: formData.state,
+                province: formData.province,
+                district: formData.district,
+                county: formData.county,
+                subDistrict: formData.subDistrict,
+                localAdministrativeUnit: formData.localAdministrativeUnit,
+                municipality: formData.municipality,
+                town: formData.town,
+                village: formData.village,
+              }}
+              onChange={handleChange}
+            />
+          </div>
+
+          {/* Category & Language Section */}
+          <div className="space-y-4 sm:space-y-6 pt-4 sm:pt-6 border-t-2 border-gray-100">
             <div className="border-l-4 border-primary pl-3 sm:pl-4 py-1">
               <h3 className="text-xl sm:text-2xl font-bold text-gray-900 font-playfair">Classification</h3>
               <p className="text-xs sm:text-sm text-gray-500 mt-1">Choose the appropriate category and language</p>
@@ -485,28 +642,6 @@ const getAdSubTitle = () => {
                   specialQuestionsValues={formData.specialQuestions || {}}
                 />
                 
-                {/* 🔥 NEW: Display dynamic category pricing info */}
-                {formData.childCategory && categoryPricing.categoryName && (
-                  <div className="mt-2 p-3 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-green-900">
-                          {categoryPricing.categoryName} Pricing
-                        </p>
-                        <p className="text-xs text-green-700 mt-1">
-                          {categoryPricing.freeImages} free images • 
-                          ${categoryPricing.pricePerExtraImage} per extra • 
-                          Max {categoryPricing.maxImages} images
-                        </p>
-                      </div>
-                      {!categoryPricing.showImageUpload && (
-                        <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full font-semibold">
-                          No Images
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
 
               <div className="space-y-2">
@@ -559,45 +694,43 @@ const getAdSubTitle = () => {
                 Price 
               </label>
               <div className="relative">
-                <span className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 text-primary font-bold text-lg sm:text-xl">$</span>
+                <span className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 text-primary font-bold text-lg sm:text-xl">
+                  {pricingState.currencySymbol || '$'}
+                </span>
                 <input
                   type="text"
                   placeholder="0.00"
                   name="price"
                   value={formData.price}
                   onChange={handleChange}
-                  className="w-full px-3 sm:px-4 py-3 sm:py-3.5 pl-9 sm:pl-12 text-sm sm:text-base border-2 border-gray-200 rounded-xl focus:border-primary focus:ring-4 focus:ring-blue-100 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 hover:border-gray-300 font-semibold"
+                  className="w-full px-3 sm:px-4 py-3 sm:py-3.5 pl-12 sm:pl-16 text-sm sm:text-base border-2 border-gray-200 rounded-xl focus:border-primary focus:ring-4 focus:ring-blue-100 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 hover:border-gray-300 font-semibold"
                 />
               </div>
             </div>
           </div>
 
-          {/* Image Upload Section - UPDATED with backend data */}
+          {/* Image Upload Section */}
           <div className="space-y-3 sm:space-y-4 pt-4 sm:pt-6 border-t-2 border-gray-100">
             <div className="border-l-4 border-primary pl-3 sm:pl-4 py-1">
               <h3 className="text-xl sm:text-2xl font-bold text-gray-900 font-playfair">Images</h3>
               <p className="text-xs sm:text-sm text-gray-500 mt-1">
                 {categoryPricing.showImageUpload 
-                  ? `Upload up to ${categoryPricing.maxImages} images • ${categoryPricing.freeImages} free images included`
+                  ? `Upload up to ${categoryPricing.maxImages} images • Tiered pricing applies`
                   : 'Image upload not available for this category'
                 }
               </p>
             </div>
             
-            {/* 🔥 UPDATED: Passing backend category data to ImageUpload */}
             <ImageUpload
               images={formData.images}
               onChange={handleImageChange}
-              maxImages={categoryPricing.maxImages} // From backend
-              freeImages={categoryPricing.freeImages} // From backend
-              pricePerExtraImage={categoryPricing.pricePerExtraImage} // From backend
+              maxImages={categoryPricing.maxImages}
               adType={formData.adType}
-              showImageUpload={categoryPricing.showImageUpload} // From backend
-              onExtraImagesChange={handleExtraImagesChange}
+              showImageUpload={categoryPricing.showImageUpload}
             />
           </div>
 
-          {/* Contact Information Section - UPDATED with PhoneInput */}
+          {/* Contact Information Section */}
           <div className="space-y-3 sm:space-y-4 pt-4 sm:pt-6 border-t-2 border-gray-100">
             <div className="border-l-4 border-primary pl-3 sm:pl-4 py-1">
               <h3 className="text-xl sm:text-2xl font-bold text-gray-900 font-playfair">Contact Information</h3>
@@ -663,33 +796,6 @@ const getAdSubTitle = () => {
                 />
               </div>
             </div>
-          </div>
-
-
-          {/* Location Section */}
-          <div className="space-y-3 sm:space-y-4 pt-4 sm:pt-6 border-t-2 border-gray-100">
-            <div className="border-l-4 border-primary pl-3 sm:pl-4 py-1">
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-900 font-playfair">Location</h3>
-              <p className="text-xs sm:text-sm text-gray-500 mt-1">Specify where your item is located</p>
-            </div>
-            <LocationSelect
-              countries={countries}
-              locationOptions={locationOptions}
-              locationValues={{
-                country: formData.country,
-                region: formData.region,
-                state: formData.state,
-                province: formData.province,
-                district: formData.district,
-                county: formData.county,
-                subDistrict: formData.subDistrict,
-                localAdministrativeUnit: formData.localAdministrativeUnit,
-                municipality: formData.municipality,
-                town: formData.town,
-                village: formData.village,
-              }}
-              onChange={handleChange}
-            />
           </div>
 
           {/* Navigation Buttons */}

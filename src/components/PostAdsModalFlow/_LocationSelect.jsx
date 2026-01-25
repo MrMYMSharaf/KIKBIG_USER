@@ -12,7 +12,8 @@ const LocationSelect = ({
   const [selectedPosition, setSelectedPosition] = useState([7.8731, 80.7718]);
   const [zoom, setZoom] = useState(7);
 
-  // Update marker and zoom when dropdown selection changes
+  // 🔥 FIX: Update marker and zoom when dropdown selection changes
+  // Remove locationOptions from dependencies to prevent infinite loop
   useEffect(() => {
     const levels = [
       'region', 'state', 'province', 'district', 'county',
@@ -32,7 +33,19 @@ const LocationSelect = ({
     // If nothing selected, reset to default
     setSelectedPosition([7.8731, 80.7718]);
     setZoom(7);
-  }, [locationValues, locationOptions]);
+  }, [
+    // 🔥 FIX: Only depend on the actual values, not the entire locationOptions object
+    locationValues.region,
+    locationValues.state,
+    locationValues.province,
+    locationValues.district,
+    locationValues.county,
+    locationValues.subDistrict,
+    locationValues.localAdministrativeUnit,
+    locationValues.municipality,
+    locationValues.town,
+    locationValues.village,
+  ]); // 🔥 Removed locationOptions from dependencies
 
   // Map click handler
   const handleMapClick = ({ lat, lng }) => {

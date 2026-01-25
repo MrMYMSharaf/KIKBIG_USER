@@ -17,24 +17,47 @@ import {
   ArrowLeft,
   Clock,
   CheckCircle,
-  X
+  X,
+  ShoppingCart // ✅ Import ShoppingCart icon
 } from 'lucide-react';
+import { useDispatch, useSelector } from 'react-redux';
 import { useGetAdvertisementByIdQuery, useGetAllAdvertisementsQuery } from '../../features/postadsSlice';
+import { useAddToCartMutation } from '../../features/AddTocartSlice';
+import { addItemToCart } from '../../features/redux/addTocardredux';
 import WatermarkedImage from '../component/WatermarkedImage.jsx';
 import getDisplayImage from '../../functions/getDisplayImage';
 import ImageGallery from "react-image-gallery";
 import "react-image-gallery/styles/css/image-gallery.css";
+import Swal from 'sweetalert2';
 
 const AdDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { data, isLoading, isError } = useGetAdvertisementByIdQuery(id);
-  const { data: similarAdsData } = useGetAllAdvertisementsQuery({ page: 1, limit: 4 });
+  const dispatch = useDispatch();
   
+  // ✅ Queries
+  // ✅ CORRECT
+const { data, isLoading, isError, refetch } = useGetAdvertisementByIdQuery(id);
+const { data: similarAdsData } = useGetAllAdvertisementsQuery({ page: 1, limit: 4 });
+
+// ✅ Now refetch is available
+useEffect(() => {
+  refetch();
+}, [id, refetch]);
+  
+  // ✅ Cart mutation
+  const [addToCart] = useAddToCartMutation();
+  
+  // ✅ Get auth state and cart items
+  const isAuthenticated = useSelector((state) => state.auth?.isAuthenticated);
+  const cartItems = useSelector((state) => state.cart.items);
+  
+  // ✅ Local state
   const [showGallery, setShowGallery] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isFavorite, setIsFavorite] = useState(false);
   const [showShareToast, setShowShareToast] = useState(false);
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
 
   useEffect(() => {
     if (isError) navigate('/viewallads');
@@ -51,6 +74,117 @@ const AdDetailPage = () => {
       document.body.style.overflow = 'unset';
     };
   }, [showGallery]);
+
+  // ✅ Check if current ad is in cart
+  const isInCart = cartItems.some(item => item.post_id === id);
+
+  // ✅ Handle Add to Cart
+  const handleAddToCart = async () => {
+    if (!isAuthenticated) {
+      Swal.fire({
+        title: 'Login Required',
+        text: 'Please login to add items to your cart',
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonColor: '#3B82F6',
+        cancelButtonColor: '#6B7280',
+        confirmButtonText: 'Login Now',
+        cancelButtonText: 'Cancel'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          navigate('/auth');
+        }
+      });
+      return;
+    }
+
+    if (isInCart) {
+      const toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 2000,
+        timerProgressBar: true,
+      });
+
+      toast.fire({
+        icon: 'info',
+        title: 'Already in cart',
+        text: listing.title
+      });
+      return;
+    }
+
+    setIsAddingToCart(true);
+
+    // ✅ Add to Redux immediately
+    dispatch(addItemToCart({
+      post_id: id,
+      title: listing.title,
+      image: listing.images?.[0] || '',
+      price: listing.price,
+      typeofads: listing.typeofads,
+    }));
+
+    // ✅ Show success toast
+    const toast = Swal.mixin({
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 2000,
+      timerProgressBar: true,
+    });
+
+    toast.fire({
+      icon: 'success',
+      title: '❤️ Added to cart!',
+      text: listing.title
+    });
+
+    // ✅ Sync to backend
+    try {
+      await addToCart({ post_id: id }).unwrap();
+      console.log('✅ Synced to backend');
+    } catch (error) {
+      console.error('❌ Failed to sync to backend:', error);
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'warning',
+        title: 'Sync issue',
+        text: 'Item added locally, but sync failed.',
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+      });
+    } finally {
+      setTimeout(() => setIsAddingToCart(false), 300);
+    }
+  };
+
+  // ✅ Handle Favorite (with auth check)
+  const handleFavoriteClick = () => {
+    if (!isAuthenticated) {
+      Swal.fire({
+        title: 'Login Required',
+        text: 'Please login to add items to your favorites',
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonColor: '#3B82F6',
+        cancelButtonColor: '#6B7280',
+        confirmButtonText: 'Login Now',
+        cancelButtonText: 'Cancel'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          navigate('/auth');
+        }
+      });
+      return;
+    }
+
+    setIsFavorite(!isFavorite);
+    // TODO: Implement actual favorites API call
+  };
 
   if (isLoading) {
     return (
@@ -129,6 +263,19 @@ const AdDetailPage = () => {
     }
   };
 
+  const handleChatWithSeller = () => {
+    navigate('/groups', { 
+      state: { 
+        selectedUser: {
+          _id: listing.userId?._id,
+          name: listing.userId?.name || "Anonymous",
+          email: listing.userId?.email,
+          pageTitle: listing.title
+        }
+      }
+    });
+  };
+
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
@@ -180,12 +327,9 @@ const AdDetailPage = () => {
         </div>
       )}
 
-      {/* Image Gallery Modal - FIXED FOR MOBILE */}
+      {/* Image Gallery Modal */}
       {showGallery && (
-        <div 
-          className="fixed inset-0 z-[100] bg-black flex flex-col"
-        >
-          {/* Close Button Bar - NOW VISIBLE */}
+        <div className="fixed inset-0 z-[100] bg-black flex flex-col">
           <div className="absolute top-0 left-0 right-0 z-[110] bg-gradient-to-b from-black/80 to-transparent p-4">
             <div className="flex justify-between items-center max-w-7xl mx-auto">
               <div className="text-white text-sm md:text-base font-medium">
@@ -201,7 +345,6 @@ const AdDetailPage = () => {
             </div>
           </div>
 
-          {/* Image Gallery - MOBILE OPTIMIZED */}
           <div className="flex-1 flex items-center justify-center p-2 md:p-4 pt-20">
             <div className="w-full h-full max-w-7xl">
               <ImageGallery
@@ -227,7 +370,7 @@ const AdDetailPage = () => {
       <div className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="container mx-auto px-4 py-3 md:py-4">
           <button 
-            onClick={() => navigate('/viewallads')}
+            onClick={() => navigate(-1)}
             className="flex items-center text-slate-600 hover:text-blue-600 transition-colors group"
           >
             <ArrowLeft className="w-4 h-4 md:w-5 md:h-5 mr-2 group-hover:-translate-x-1 transition-transform" />
@@ -243,7 +386,6 @@ const AdDetailPage = () => {
             {/* Image Gallery Card */}
             <div className="bg-white rounded-xl md:rounded-2xl shadow-xl overflow-hidden">
               <div className="relative group">
-                {/* Main Image */}
                 <div 
                   className="relative cursor-pointer"
                   onClick={() => openGallery(currentImageIndex)}
@@ -257,20 +399,17 @@ const AdDetailPage = () => {
                     }}
                   />
                   
-                  {/* Click to View Overlay */}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
                     <div className="bg-white/90 px-3 py-2 md:px-4 md:py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
                       <p className="text-xs md:text-sm font-semibold">Click to view gallery</p>
                     </div>
                   </div>
                   
-                  {/* Image Counter Badge */}
                   <div className="absolute top-2 md:top-4 right-2 md:right-4 bg-black/70 backdrop-blur-sm text-white px-2 py-1 md:px-3 md:py-1 rounded-full text-xs md:text-sm font-medium">
                     {currentImageIndex + 1} / {images.length}
                   </div>
                 </div>
 
-                {/* Navigation Arrows */}
                 {images.length > 1 && (
                   <>
                     <button 
@@ -295,7 +434,6 @@ const AdDetailPage = () => {
                 )}
               </div>
 
-              {/* Thumbnail Gallery */}
               {images.length > 1 && (
                 <div className="p-3 md:p-4 bg-slate-50">
                   <div className="flex space-x-2 md:space-x-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-300">
@@ -342,25 +480,53 @@ const AdDetailPage = () => {
                   </div>
                 </div>
                 
-                {/* Action Buttons */}
+                {/* ✅ Action Buttons - Heart, Share, Cart */}
                 <div className="flex space-x-1 md:space-x-2">
                   <button 
-                    onClick={() => setIsFavorite(!isFavorite)}
+                    onClick={handleFavoriteClick}
                     className={`
                       p-2 md:p-3 rounded-lg md:rounded-xl transition-all transform hover:scale-110
                       ${isFavorite 
                         ? 'bg-red-100 text-red-600 shadow-lg' 
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}
                     `}
+                    title={isAuthenticated ? (isFavorite ? "Remove from favorites" : "Add to favorites") : "Login to add to favorites"}
                   >
                     <Heart className={`w-5 h-5 md:w-6 md:h-6 ${isFavorite ? 'fill-current' : ''}`} />
                   </button>
+                  
                   <button 
                     onClick={handleShare}
                     className="p-2 md:p-3 rounded-lg md:rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all transform hover:scale-110"
+                    title="Share"
                   >
                     <Share2 className="w-5 h-5 md:w-6 md:h-6" />
                   </button>
+
+                  {/* ✅ Cart Button - ONLY shown when authenticated */}
+                  {isAuthenticated && (
+                    <button 
+                      onClick={handleAddToCart}
+                      disabled={isAddingToCart || isInCart}
+                      className={`
+                        p-2 md:p-3 rounded-lg md:rounded-xl transition-all transform hover:scale-110
+                        ${isInCart 
+                          ? 'bg-green-100 text-green-600 shadow-lg cursor-default' 
+                          : isAddingToCart
+                          ? 'bg-slate-300 text-slate-500 cursor-wait'
+                          : 'bg-blue-100 text-blue-600 hover:bg-blue-200'}
+                      `}
+                      title={isInCart ? "In cart" : "Add to cart"}
+                    >
+                      {isAddingToCart ? (
+                        <div className="animate-spin">
+                          <ShoppingCart className="w-5 h-5 md:w-6 md:h-6" />
+                        </div>
+                      ) : (
+                        <ShoppingCart className={`w-5 h-5 md:w-6 md:h-6 ${isInCart ? 'fill-current' : ''}`} />
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -376,6 +542,41 @@ const AdDetailPage = () => {
                   <DollarSign className="w-8 h-8 md:w-12 md:h-12 opacity-50" />
                 </div>
               </div>
+
+              {/* ✅ Add to Cart Button (Large) - ONLY shown when authenticated */}
+              {isAuthenticated && (
+                <button
+                  onClick={handleAddToCart}
+                  disabled={isAddingToCart || isInCart}
+                  className={`
+                    w-full px-4 py-3 md:px-6 md:py-4 rounded-xl font-bold text-base md:text-lg flex items-center justify-center transition-all mb-4 md:mb-6
+                    ${isInCart
+                      ? 'bg-green-100 text-green-700 cursor-default'
+                      : isAddingToCart
+                      ? 'bg-gray-200 text-gray-500 cursor-wait'
+                      : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-xl'}
+                  `}
+                >
+                  {isAddingToCart ? (
+                    <>
+                      <div className="animate-spin mr-2">
+                        <ShoppingCart className="w-5 h-5 md:w-6 md:h-6" />
+                      </div>
+                      Adding to Cart...
+                    </>
+                  ) : isInCart ? (
+                    <>
+                      <CheckCircle className="w-5 h-5 md:w-6 md:h-6 mr-2" />
+                      ✓ In Cart
+                    </>
+                  ) : (
+                    <>
+                      <ShoppingCart className="w-5 h-5 md:w-6 md:h-6 mr-2" />
+                      Add to Cart
+                    </>
+                  )}
+                </button>
+              )}
 
               {/* Location */}
               <div className="flex items-start space-x-2 md:space-x-3 mb-4 md:mb-6 p-3 md:p-4 bg-slate-50 rounded-xl">
@@ -512,14 +713,24 @@ const AdDetailPage = () => {
                 </div>
               )}
 
-              {/* Primary Contact Button */}
-              <button 
-                onClick={handleContactSeller}
-                className="w-full mt-3 md:mt-4 bg-white text-blue-600 px-4 py-3 md:px-6 md:py-4 rounded-xl hover:shadow-xl transition-all font-bold text-base md:text-lg flex items-center justify-center group"
-              >
-                <MessageCircle className="mr-2 group-hover:scale-110 transition-transform w-5 h-5 md:w-6 md:h-6" />
-                Contact Seller
-              </button>
+              {/* Primary Contact Buttons */}
+              <div className="mt-3 md:mt-4 space-y-2">
+                <button 
+                  onClick={handleChatWithSeller}
+                  className="w-full bg-white text-blue-600 px-4 py-3 md:px-6 md:py-4 rounded-xl hover:shadow-xl transition-all font-bold text-base md:text-lg flex items-center justify-center group"
+                >
+                  <MessageCircle className="mr-2 group-hover:scale-110 transition-transform w-5 h-5 md:w-6 md:h-6" />
+                  Chat with Seller
+                </button>
+                
+                <button 
+                  onClick={handleContactSeller}
+                  className="w-full bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white px-4 py-3 md:px-6 md:py-4 rounded-xl transition-all font-semibold text-sm md:text-base flex items-center justify-center group border border-white/30"
+                >
+                  <Mail className="mr-2 group-hover:scale-110 transition-transform w-4 h-4 md:w-5 md:h-5" />
+                  Email Seller
+                </button>
+              </div>
             </div>
           </div>
 

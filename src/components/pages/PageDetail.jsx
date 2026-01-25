@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {ArrowLeft,MapPin,Phone,Globe,Share2,Heart,Flag,Users,Star,Edit3,Trash2,Camera,Send,Tag,Store,FileText,Award,Crown,Gem,Image as ImageIcon,AlertCircle} from 'lucide-react';
-import { useGetPageByIdQuery,useDeletePageMutation } from '../../features/pageApiSlice';
-import {useIsFollowingPageQuery,useFollowPageMutation,useUnfollowPageMutation} from '../../features/page.flowwingSlice';
+import {ArrowLeft,MapPin,Phone,Globe,Share2,Heart,Flag,Users,Star,Edit3,Trash2,Camera,Send,Tag,Store,FileText,Award,Crown,Gem,Image as ImageIcon,AlertCircle,MessageCircle} from 'lucide-react';
+import { useGetPageByIdQuery, useDeletePageMutation } from '../../features/pageApiSlice';
+import { useIsFollowingPageQuery, useFollowPageMutation, useUnfollowPageMutation } from '../../features/page.flowwingSlice';
+import { useGetPageReviewsQuery, useGetUserReviewForPageQuery, useCreateOrUpdateReviewMutation, useDeleteReviewMutation } from '../../features/pageReviewApiSlice';
+import { useSelector } from 'react-redux';
 
-
-
-// Icon mapping for page types (same as Page_create)
+// Icon mapping for page types
 const PAGE_TYPE_ICONS = {
   'Basic Page': { icon: FileText, color: 'bg-gray-500', gradient: 'from-gray-400 to-gray-600' },
   'Standard Page': { icon: Award, color: 'bg-blue-500', gradient: 'from-blue-400 to-blue-600' },
@@ -14,60 +14,168 @@ const PAGE_TYPE_ICONS = {
   'VIP Page': { icon: Gem, color: 'bg-yellow-500', gradient: 'from-yellow-400 to-yellow-600' },
 };
 
-// Helper function to get icon for page type
 const getPageTypeIcon = (pageTypeName) => {
   const iconData = PAGE_TYPE_ICONS[pageTypeName] || PAGE_TYPE_ICONS['Basic Page'];
   return iconData;
 };
 
 const PageDetail = () => {
-  
   const { id } = useParams();
   const navigate = useNavigate();
+
+  const country = useSelector((state) => state.country?.country);
 
   // Fetch page data
   const { data: pageData, isLoading, error, refetch } = useGetPageByIdQuery(id);
   const [deletePage] = useDeletePageMutation();
   
   // Follow/Unfollow functionality
-  const { data: followingStatus, isLoading: followStatusLoading } = useIsFollowingPageQuery(
-    { pageId: id }
+  const { data: followingStatus, isLoading: followStatusLoading, refetch: refetchFollowStatus } = useIsFollowingPageQuery(
+    { pageId: id },
+    { skip: !id }
   );
   
   const [followPage, { isLoading: following }] = useFollowPageMutation();
   const [unfollowPage, { isLoading: unfollowing }] = useUnfollowPageMutation();
+
+  // Review functionality
+  const { data: reviewsData, isLoading: reviewsLoading } = useGetPageReviewsQuery(
+    { pageId: id, page: 1, limit: 20 },
+    { skip: !id }
+  );
+  
+  const { data: userReviewData } = useGetUserReviewForPageQuery(
+    { pageId: id },
+    { skip: !id }
+  );
+
+  const [createOrUpdateReview, { isLoading: submittingReview }] = useCreateOrUpdateReviewMutation();
+  const [deleteReview] = useDeleteReviewMutation();
   
   const [activeTab, setActiveTab] = useState('About');
   const [showShareModal, setShowShareModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  
+  // Review form state
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [hoverRating, setHoverRating] = useState(0);
 
   const page = pageData?.data;
   const isFollowing = followingStatus?.isFollowing || false;
   const isFollowActionLoading = following || unfollowing;
-  
-  // Check if current user is owner (from backend)
   const isOwner = page?.isOwner || false;
+  
+  // Review data
+  const reviews = reviewsData?.reviews || [];
+  const reviewStats = reviewsData?.stats || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  const averageRating = reviewsData?.averageRating || page?.averageRating || 0;
+  const userReview = userReviewData?.review;
+  const hasUserReview = userReviewData?.hasReview || false;
+
+  // Replace the handleMessageOwner function in your PageDetail component with this:
+
+// Add this to your PageDetail component
+
+const handleMessageOwner = () => {
+  if (!page?.userId?._id && !page?.userId) {
+    alert('Unable to message page owner');
+    return;
+  }
+  
+  // Get the page owner's ID
+  const ownerId = page.userId?._id || page.userId;
+  
+  // Navigate to groups/messages page with state containing the selected user
+  navigate('/groups', {
+    state: {
+      selectedUser: {
+        _id: ownerId,
+        name: page.userId?.name || 'Unknown User',
+        email: page.userId?.email || page.contact?.email,
+        phone: page.userId?.phone || page.contact?.phone,
+        pageTitle: page.title, // ✅ This is the page title that should show in chat
+      },
+      type: 'individual' // ✅ Important: include the type
+    }
+  });
+};
+
+  // Open review modal (pre-fill if editing)
+  const openReviewModal = () => {
+    if (hasUserReview && userReview) {
+      setReviewRating(userReview.rating);
+      setReviewComment(userReview.comment);
+    } else {
+      setReviewRating(5);
+      setReviewComment('');
+    }
+    setShowReviewModal(true);
+  };
+
+  // Submit review
+  const handleSubmitReview = async () => {
+    if (!reviewComment.trim()) {
+      alert('Please write a comment');
+      return;
+    }
+
+    try {
+      await createOrUpdateReview({
+        pageId: id,
+        rating: reviewRating,
+        comment: reviewComment.trim(),
+      }).unwrap();
+
+      setShowReviewModal(false);
+      setReviewComment('');
+      setReviewRating(5);
+      alert(hasUserReview ? 'Review updated successfully!' : 'Review submitted successfully!');
+      refetch();
+    } catch (error) {
+      console.error('Submit review error:', error);
+      if (error?.status === 401) {
+        alert('Please login to submit a review');
+        navigate('/login');
+      } else {
+        alert(error?.data?.message || 'Failed to submit review');
+      }
+    }
+  };
+
+  // Delete user's review
+  const handleDeleteReview = async () => {
+    if (!userReview?._id) return;
+
+    if (!confirm('Are you sure you want to delete your review?')) return;
+
+    try {
+      await deleteReview(userReview._id).unwrap();
+      alert('Review deleted successfully');
+      refetch();
+    } catch (error) {
+      console.error('Delete review error:', error);
+      alert('Failed to delete review');
+    }
+  };
 
   const handleFollow = async () => {
     try {
-      // If already following, unfollow
       if (isFollowing) {
-        const result = await unfollowPage({ pageId: id }).unwrap();
-        console.log('Unfollow successful:', result);
+        await unfollowPage({ pageId: id }).unwrap();
       } else {
-        const result = await followPage({ pageId: id }).unwrap();
-        console.log('Follow successful:', result);
+        await followPage({ pageId: id }).unwrap();
       }
-
-      // Refetch page to update followers count
-      refetch();
+      await refetchFollowStatus();
+      await refetch();
     } catch (error) {
       console.error('Follow/Unfollow error:', error);
-      
-      // Check if it's an authentication error
       if (error?.status === 401 || error?.status === 403) {
         alert('Your session has expired. Please login again.');
         navigate('/login');
+      } else if (error?.status === 400) {
+        alert(error?.data?.message || 'Action not allowed');
       } else {
         alert(error?.data?.message || 'Failed to update follow status');
       }
@@ -92,7 +200,6 @@ const PageDetail = () => {
     }
   };
 
-  // Get location display
   const getLocationDisplay = () => {
     if (!page?.location) return null;
     const parts = [
@@ -107,7 +214,6 @@ const PageDetail = () => {
     return parts.slice(0, 2).join(', ');
   };
 
-  // Get icon data for current page type
   const currentPageTypeIcon = page?.pagetype ? getPageTypeIcon(page.pagetype.name) : null;
   const PageTypeIconComponent = currentPageTypeIcon?.icon;
 
@@ -126,14 +232,14 @@ const PageDetail = () => {
       </div>
     );
   }
-
+  
   // Error state
   if (error || !page) {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="container mx-auto px-4 py-8 max-w-4xl">
           <button
-            onClick={() => navigate('/pages')}
+            onClick={() => navigate(`/${country}/page`)}
             className="flex items-center text-gray-600 hover:text-gray-900 mb-6 font-semibold"
           >
             <ArrowLeft className="w-5 h-5 mr-2" />
@@ -160,7 +266,7 @@ const PageDetail = () => {
         {/* Header with Back Button */}
         <div className="mb-8">
           <button
-            onClick={() => navigate('/pages')}
+            onClick={() => navigate(`/${country}/page`)}
             className="flex items-center text-gray-600 hover:text-gray-900 mb-6 font-semibold transition-colors"
           >
             <ArrowLeft className="w-5 h-5 mr-2" />
@@ -168,7 +274,7 @@ const PageDetail = () => {
           </button>
         </div>
 
-        {/* Page Preview - Same structure as Page_create */}
+        {/* Page Preview */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
           
           {/* Cover Image Section */}
@@ -180,7 +286,6 @@ const PageDetail = () => {
                   alt="Cover" 
                   className="w-full h-full object-cover" 
                 />
-                {/* Owner Controls Overlay */}
                 {isOwner && (
                   <div className="absolute top-4 right-4 flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
@@ -233,7 +338,6 @@ const PageDetail = () => {
                   {page.title}
                 </h1>
 
-                {/* Page Type Badge with Icon */}
                 {PageTypeIconComponent && (
                   <div className={`inline-flex items-center gap-2 bg-gradient-to-r ${currentPageTypeIcon?.gradient} text-white px-4 py-2 rounded-lg text-sm font-semibold mb-3 shadow-md`}>
                     <PageTypeIconComponent className="w-5 h-5" />
@@ -241,7 +345,6 @@ const PageDetail = () => {
                   </div>
                 )}
 
-                {/* Location */}
                 {getLocationDisplay() && (
                   <div className="flex items-center gap-2 text-gray-600 mb-4">
                     <MapPin className="w-4 h-4" />
@@ -249,9 +352,8 @@ const PageDetail = () => {
                   </div>
                 )}
 
-                {/* Stats Row - Followers, Rating, Share */}
+                {/* Stats Row */}
                 <div className="flex items-center gap-6 mb-4">
-                  {/* Followers */}
                   <div className="flex items-center gap-2">
                     <Users className="w-5 h-5 text-[#00008F]" />
                     <div>
@@ -262,17 +364,29 @@ const PageDetail = () => {
                     </div>
                   </div>
 
-                  {/* Rating */}
                   <div className="flex items-center gap-2">
                     <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
                     <div>
-                      <div className="text-lg font-bold text-gray-900">{(page.averageRating || 0).toFixed(1)}</div>
+                      <div className="text-lg font-bold text-gray-900">{averageRating.toFixed(1)}</div>
                       <div className="text-xs text-gray-500">Rating</div>
                     </div>
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex items-center gap-2 ml-auto">
+                  <div className="flex items-center gap-2 ml-auto flex-wrap">
+                    {/* ✅ Message Button (only for non-owners) */}
+                    {!isOwner && (
+                      <button
+                        onClick={handleMessageOwner}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all shadow-md hover:shadow-lg"
+                        title="Message page owner"
+                      >
+                        <MessageCircle className="w-5 h-5" />
+                        <span className="text-sm font-semibold">Message</span>
+                      </button>
+                    )}
+
+                    {/* Follow Button */}
                     {!isOwner && (
                       <button
                         onClick={handleFollow}
@@ -292,6 +406,7 @@ const PageDetail = () => {
                       </button>
                     )}
                     
+                    {/* Share Button */}
                     <button
                       onClick={handleShare}
                       className="flex items-center gap-2 px-4 py-2.5 bg-[#00008F]/10 text-[#00008F] rounded-lg hover:bg-[#00008F]/20 transition-colors shadow-sm"
@@ -303,7 +418,6 @@ const PageDetail = () => {
                 </div>
               </div>
 
-              {/* Edit Button (for owners) */}
               {isOwner && (
                 <button
                   onClick={handleEdit}
@@ -333,6 +447,7 @@ const PageDetail = () => {
               </div>
             </div>
 
+            {/* Tab Content - Keeping all the existing sections */}
             {/* About Section */}
             {activeTab === 'About' && (
               <div className="mt-6 space-y-6">
@@ -343,7 +458,6 @@ const PageDetail = () => {
                   </p>
                 </div>
 
-                {/* Tags */}
                 {page.tags?.length > 0 && (
                   <div>
                     <h3 className="text-sm font-semibold text-gray-900 mb-2">Tags</h3>
@@ -360,7 +474,6 @@ const PageDetail = () => {
                   </div>
                 )}
 
-                {/* Category & Subcategory & Language Info */}
                 <div className="bg-white border border-gray-200 p-4 rounded-lg">
                   <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
                     <Store className="w-4 h-4 text-[#00008F]" />
@@ -396,8 +509,23 @@ const PageDetail = () => {
                 <div>
                   <h3 className="text-lg font-bold text-gray-900 mb-4">Contact Information</h3>
                   
+                  {/* ✅ Message Button in Contact Tab */}
+                  {!isOwner && (
+                    <button
+                      onClick={handleMessageOwner}
+                      className="w-full flex items-center gap-4 p-4 mb-4 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors shadow-md"
+                    >
+                      <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center">
+                        <MessageCircle className="w-6 h-6 text-white" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="text-sm font-semibold">Send Message</p>
+                        <p className="text-sm text-green-100">Chat with {page.userId?.name || 'page owner'}</p>
+                      </div>
+                    </button>
+                  )}
+                  
                   <div className="space-y-3">
-                    {/* Phone */}
                     {page.contact?.phone && (
                       <a
                         href={`tel:${page.contact.phone}`}
@@ -413,7 +541,6 @@ const PageDetail = () => {
                       </a>
                     )}
 
-                    {/* WhatsApp */}
                     {page.contact?.whatsapp && (
                       <a
                         href={`https://wa.me/${page.contact.whatsapp.replace(/\D/g, '')}`}
@@ -431,7 +558,6 @@ const PageDetail = () => {
                       </a>
                     )}
 
-                    {/* Email */}
                     {page.contact?.email && (
                       <a
                         href={`mailto:${page.contact.email}`}
@@ -447,7 +573,6 @@ const PageDetail = () => {
                       </a>
                     )}
 
-                    {/* Telegram */}
                     {page.contact?.telegram && (
                       <a
                         href={`https://t.me/${page.contact.telegram.replace('@', '')}`}
@@ -472,7 +597,6 @@ const PageDetail = () => {
                   <h3 className="text-lg font-bold text-gray-900 mb-4">Social Media</h3>
                   
                   <div className="space-y-3">
-                    {/* Website */}
                     {page.social?.website && (
                       <a
                         href={page.social.website}
@@ -490,7 +614,6 @@ const PageDetail = () => {
                       </a>
                     )}
 
-                    {/* Facebook */}
                     {page.social?.facebook && (
                       <a
                         href={page.social.facebook}
@@ -508,7 +631,6 @@ const PageDetail = () => {
                       </a>
                     )}
 
-                    {/* Instagram */}
                     {page.social?.instagram && (
                       <a
                         href={page.social.instagram}
@@ -619,42 +741,85 @@ const PageDetail = () => {
               </div>
             )}
 
-            {/* Reviews Section */}
+            {/* Reviews Section - keeping all existing review code */}
             {activeTab === 'Reviews' && (
               <div className="mt-6 space-y-6">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-bold text-gray-900">Ratings & Reviews</h3>
                   {!isOwner && (
-                    <button className="text-[#00008F] text-sm font-semibold hover:underline">
-                      Write Review
+                    <button 
+                      onClick={openReviewModal}
+                      className="text-[#00008F] text-sm font-semibold hover:underline"
+                    >
+                      {hasUserReview ? 'Edit Your Review' : 'Write Review'}
                     </button>
                   )}
                 </div>
+
+                {hasUserReview && userReview && (
+                  <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-5 mb-6">
+                    <div className="flex items-start justify-between mb-3">
+                      <h4 className="text-sm font-bold text-blue-900">Your Review</h4>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={openReviewModal}
+                          className="text-blue-600 hover:text-blue-700 text-xs font-semibold flex items-center gap-1"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          Edit
+                        </button>
+                        <button
+                          onClick={handleDeleteReview}
+                          className="text-red-600 hover:text-red-700 text-xs font-semibold flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 mb-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star
+                          key={star}
+                          className={`w-5 h-5 ${
+                            star <= userReview.rating
+                              ? 'text-yellow-500 fill-yellow-500'
+                              : 'text-gray-300'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-gray-700 leading-relaxed">{userReview.comment}</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      {new Date(userReview.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                )}
 
                 {/* Overall Rating */}
                 <div className="bg-gradient-to-br from-[#00008F]/5 to-blue-50 rounded-xl p-6 border border-[#00008F]/10">
                   <div className="flex items-center gap-6">
                     <div className="text-center">
-                      <div className="text-5xl font-black text-[#00008F] mb-2">{(page.averageRating || 0).toFixed(1)}</div>
+                      <div className="text-5xl font-black text-[#00008F] mb-2">{averageRating.toFixed(1)}</div>
                       <div className="flex items-center gap-1 mb-1">
                         {[1, 2, 3, 4, 5].map((star) => (
                           <Star
                             key={star}
                             className={`w-5 h-5 ${
-                              star <= Math.round(page.averageRating || 0)
+                              star <= Math.round(averageRating)
                                 ? 'text-yellow-500 fill-yellow-500'
                                 : 'text-gray-300 fill-gray-300'
                             }`}
                           />
                         ))}
                       </div>
-                      <p className="text-sm text-gray-600">{page.reviews?.length || 0} reviews</p>
+                      <p className="text-sm text-gray-600">{reviews.length} reviews</p>
                     </div>
 
                     <div className="flex-1">
                       {[5, 4, 3, 2, 1].map((rating) => {
-                        const count = page.reviews?.filter(r => r.rating === rating).length || 0;
-                        const percentage = page.reviews?.length ? (count / page.reviews.length) * 100 : 0;
+                        const count = reviewStats[rating] || 0;
+                        const percentage = reviews.length ? (count / reviews.length) * 100 : 0;
                         
                         return (
                           <div key={rating} className="flex items-center gap-3 mb-2">
@@ -674,17 +839,21 @@ const PageDetail = () => {
                 </div>
 
                 {/* Reviews List */}
-                {page.reviews?.length > 0 ? (
+                {reviewsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="w-8 h-8 border-4 border-[#00008F] border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  </div>
+                ) : reviews.length > 0 ? (
                   <div className="space-y-4">
-                    {page.reviews.map((review, index) => (
-                      <div key={index} className="bg-white border border-gray-200 rounded-xl p-5">
+                    {reviews.map((review) => (
+                      <div key={review._id} className="bg-white border border-gray-200 rounded-xl p-5">
                         <div className="flex items-start gap-4">
                           <div className="w-12 h-12 bg-[#00008F] rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
-                            {review.user?.name?.charAt(0) || 'U'}
+                            {review.userId?.name?.charAt(0).toUpperCase() || 'U'}
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center justify-between mb-2">
-                              <h4 className="font-bold text-gray-900">{review.user?.name || 'Anonymous'}</h4>
+                              <h4 className="font-bold text-gray-900">{review.userId?.name || 'Anonymous'}</h4>
                               <div className="flex items-center gap-1">
                                 {[1, 2, 3, 4, 5].map((star) => (
                                   <Star
@@ -721,7 +890,86 @@ const PageDetail = () => {
           </div>
         </div>
       </div>
+
+      {/* Review Modal */}
+      {showReviewModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">
+              {hasUserReview ? 'Edit Your Review' : 'Write a Review'}
+            </h3>
             
+            {/* Star Rating */}
+            <div className="mb-6">
+              <label className="block text-sm font-bold text-gray-900 mb-3">
+                Your Rating
+              </label>
+              <div className="flex gap-2 justify-center">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setReviewRating(star)}
+                    onMouseEnter={() => setHoverRating(star)}
+                    onMouseLeave={() => setHoverRating(0)}
+                    className="transition-transform hover:scale-110"
+                  >
+                    <Star
+                      className={`w-10 h-10 ${
+                        star <= (hoverRating || reviewRating)
+                          ? 'text-yellow-500 fill-yellow-500'
+                          : 'text-gray-300'
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+              <p className="text-center text-sm text-gray-600 mt-2">
+                {reviewRating} {reviewRating === 1 ? 'star' : 'stars'}
+              </p>
+            </div>
+
+            {/* Comment */}
+            <div className="mb-6">
+              <label className="block text-sm font-bold text-gray-900 mb-2">
+                Your Comment
+              </label>
+              <textarea
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+                placeholder="Share your experience with this page..."
+                rows={4}
+                maxLength={1000}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#00008F] focus:outline-none resize-none"
+              />
+              <p className="text-xs text-gray-500 mt-1 text-right">
+                {reviewComment.length}/1000
+              </p>
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowReviewModal(false);
+                  setReviewComment('');
+                  setReviewRating(5);
+                }}
+                className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitReview}
+                disabled={submittingReview || !reviewComment.trim()}
+                className="flex-1 py-3 bg-[#00008F] text-white rounded-lg hover:bg-[#00006F] transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {submittingReview ? 'Submitting...' : hasUserReview ? 'Update Review' : 'Submit Review'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Share Modal */}
       {showShareModal && (
@@ -782,4 +1030,3 @@ const PageDetail = () => {
 };
 
 export default PageDetail;
-

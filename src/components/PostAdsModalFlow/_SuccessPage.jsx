@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { resetAdPost } from "../../features/redux/adPostSlice";
 import { useGetVerificationByAdIdQuery } from "../../features/aiverificationoutputSlice";
+import { useGetAdvertisementByIdQuery } from "../../features/postadsSlice"; // 🔥 NEW: Import to get current ad status
 
 const SuccessPage = () => {
   const navigate = useNavigate();
@@ -10,15 +11,32 @@ const SuccessPage = () => {
   const { formData, uploadedAdId } = useSelector((state) => state.adPost);
   const [countdown, setCountdown] = useState(10);
   
+  // 🔥 NEW: Fetch current advertisement to get real-time status
+  const { data: adData, isLoading: adLoading } = useGetAdvertisementByIdQuery(uploadedAdId, {
+    skip: !uploadedAdId,
+    pollingInterval: 2000, // Poll every 2 seconds to get updated status
+  });
+  
   // Fetch verification result from database
-  const { data: verificationData, isLoading } = useGetVerificationByAdIdQuery(uploadedAdId, {
+  const { data: verificationData, isLoading: verificationLoading } = useGetVerificationByAdIdQuery(uploadedAdId, {
     skip: !uploadedAdId
   });
   
   const verificationResult = verificationData?.data?.[0]; // Get first (latest) verification
-  const verificationPassed = verificationResult?.success ?? true; // Default to true if no data
+  const currentAd = adData?.data; // 🔥 NEW: Get current ad with status
+  
+  // 🔥 FIXED: Check BOTH verification result AND current ad status
+  const adStatus = currentAd?.status || "inactive";
+  const verificationPassed = verificationResult?.success ?? true; // Default to true if no verification data
+  
+  // 🔥 CRITICAL: Determine if ad is actually published (active)
+  const isPublished = adStatus === "active" && verificationPassed;
+  const isBlocked = adStatus === "Ai_Blocked" || !verificationPassed;
+  const isPending = adStatus === "inactive";
 
-  // Auto-redirect countdown
+  console.log("📊 Success Page Status:", { adStatus, verificationPassed, isPublished, isBlocked, isPending });
+
+  // Auto-redirect countdown - 🔥 FIXED: 1 second intervals
   useEffect(() => {
     if (countdown <= 0) {
       handleGoHome();
@@ -27,7 +45,7 @@ const SuccessPage = () => {
 
     const timer = setInterval(() => {
       setCountdown((prev) => prev - 1);
-    }, 3000);
+    }, 1000); // 🔥 FIXED: Changed from 3000 to 1000 (1 second)
 
     return () => clearInterval(timer);
   }, [countdown]);
@@ -45,7 +63,7 @@ const SuccessPage = () => {
   };
 
   // Show loading state while fetching verification
-  if (isLoading) {
+  if (verificationLoading || adLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -57,20 +75,32 @@ const SuccessPage = () => {
   }
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br ${verificationPassed ? 'from-green-50 via-blue-50 to-purple-50' : 'from-orange-50 via-yellow-50 to-red-50'} flex items-center justify-center p-4`}>
+    <div className={`min-h-screen bg-gradient-to-br ${
+      isPublished ? 'from-green-50 via-blue-50 to-purple-50' : 
+      isBlocked ? 'from-red-50 via-orange-50 to-yellow-50' :
+      'from-orange-50 via-yellow-50 to-red-50'
+    } flex items-center justify-center p-4`}>
       <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-12 max-w-2xl w-full">
-        {/* Icon Animation - Success or Pending */}
+        {/* Icon Animation - Success, Blocked, or Pending */}
         <div className="flex justify-center mb-6">
           <div className="relative">
-            <div className={`absolute inset-0 ${verificationPassed ? 'bg-green-400' : 'bg-orange-400'} rounded-full animate-ping opacity-75`}></div>
-            <div className={`relative ${verificationPassed ? 'bg-green-500' : 'bg-orange-500'} text-white rounded-full w-24 h-24 flex items-center justify-center text-5xl animate-bounce`}>
-              {verificationPassed ? '✅' : '⏳'}
+            <div className={`absolute inset-0 ${
+              isPublished ? 'bg-green-400' : 
+              isBlocked ? 'bg-red-400' : 
+              'bg-orange-400'
+            } rounded-full animate-ping opacity-75`}></div>
+            <div className={`relative ${
+              isPublished ? 'bg-green-500' : 
+              isBlocked ? 'bg-red-500' : 
+              'bg-orange-500'
+            } text-white rounded-full w-24 h-24 flex items-center justify-center text-5xl animate-bounce`}>
+              {isPublished ? '✅' : isBlocked ? '🚫' : '⏳'}
             </div>
           </div>
         </div>
 
-        {/* Message - Success or Manual Review */}
-        {verificationPassed ? (
+        {/* Message - Success, Blocked, or Manual Review */}
+        {isPublished ? (
           <>
             <h1 className="text-4xl font-bold text-center text-gray-900 mb-3">
               🎉 Successfully Published!
@@ -79,6 +109,76 @@ const SuccessPage = () => {
             <p className="text-center text-gray-600 text-lg mb-6">
               Your <span className="font-bold text-blue-600">{formData.typeofads || "advertisement"}</span> has been verified and is now live!
             </p>
+          </>
+        ) : isBlocked ? (
+          <>
+            <h1 className="text-4xl font-bold text-center text-red-600 mb-3">
+              🚫 Advertisement Blocked
+            </h1>
+            
+            <p className="text-center text-gray-700 text-lg mb-6">
+              Your <span className="font-bold text-blue-600">{formData.typeofads || "advertisement"}</span> did not pass our AI verification.
+            </p>
+            
+            {/* Blocked Notice */}
+            <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-6 mb-6">
+              <div className="flex items-start gap-4">
+                <div className="text-4xl">🚫</div>
+                <div>
+                  <h3 className="font-bold text-red-900 text-xl mb-2">
+                    Content Violation Detected
+                  </h3>
+                  <p className="text-red-800 mb-3">
+                    Our AI verification system detected content that violates our community guidelines.
+                  </p>
+                  <div className="bg-white rounded-lg p-4 border border-red-200">
+                    <p className="font-semibold text-gray-900 mb-2">Why was my ad blocked?</p>
+                    <p className="text-sm text-gray-700 mb-3">
+                      {verificationResult?.message || "The content did not meet our safety and quality standards."}
+                    </p>
+                    
+                    {/* Show specific issues if available */}
+                    {verificationResult?.text_check?.issues && verificationResult.text_check.issues.length > 0 && (
+                      <>
+                        <p className="font-semibold text-gray-900 mb-2 text-sm">Specific Issues:</p>
+                        <ul className="space-y-1 text-sm text-red-700 ml-4">
+                          {verificationResult.text_check.issues.map((issue, idx) => (
+                            <li key={idx} className="flex items-start gap-2">
+                              <span>•</span>
+                              <span>{issue}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </div>
+                  <div className="bg-white rounded-lg p-4 border border-red-200 mt-3">
+                    <p className="font-semibold text-gray-900 mb-2">What can I do?</p>
+                    <ul className="space-y-2 text-sm text-gray-700">
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-500 font-bold">1.</span>
+                        <span>Review our community guidelines and terms of service</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-500 font-bold">2.</span>
+                        <span>Edit your ad to remove any prohibited content</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-500 font-bold">3.</span>
+                        <span>Submit a new advertisement that complies with our policies</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-500 font-bold">4.</span>
+                        <span>Contact support if you believe this was an error</span>
+                      </li>
+                    </ul>
+                  </div>
+                  <p className="text-sm text-red-700 mt-3 italic">
+                    ⚠️ <strong>Note:</strong> Repeatedly posting prohibited content may result in account suspension.
+                  </p>
+                </div>
+              </div>
+            </div>
           </>
         ) : (
           <>
@@ -154,22 +254,45 @@ const SuccessPage = () => {
               </div>
             )}
             {uploadedAdId && (
-              <div className="flex justify-between items-center py-2">
+              <div className="flex justify-between items-center py-2 border-b border-blue-200">
                 <span className="text-gray-600">Ad ID:</span>
                 <span className="font-mono text-xs text-gray-500">{uploadedAdId}</span>
               </div>
             )}
+            {/* 🔥 NEW: Show current status */}
+            <div className="flex justify-between items-center py-2">
+              <span className="text-gray-600">Status:</span>
+              <span className={`font-bold text-sm px-3 py-1 rounded-full ${
+                adStatus === 'active' ? 'bg-green-100 text-green-700' :
+                adStatus === 'Ai_Blocked' ? 'bg-red-100 text-red-700' :
+                'bg-yellow-100 text-yellow-700'
+              }`}>
+                {adStatus === 'active' ? 'Active' : adStatus === 'Ai_Blocked' ? 'Blocked' : 'Pending'}
+              </span>
+            </div>
           </div>
         </div>
 
         {/* Verification Status */}
-        {verificationPassed ? (
+        {isPublished ? (
           <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4 mb-6">
             <div className="flex items-center gap-3">
               <div className="text-3xl">✅</div>
               <div>
                 <p className="font-bold text-green-900">Verification Complete</p>
                 <p className="text-sm text-green-700">Your content passed all safety checks</p>
+              </div>
+            </div>
+          </div>
+        ) : isBlocked ? (
+          <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="text-3xl">🚫</div>
+              <div>
+                <p className="font-bold text-red-900">AI Verification Failed</p>
+                <p className="text-sm text-red-700">
+                  {verificationResult?.message || "Content did not meet our safety standards"}
+                </p>
               </div>
             </div>
           </div>
@@ -192,7 +315,7 @@ const SuccessPage = () => {
           <h4 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
             <span className="text-xl">🚀</span> What's Next?
           </h4>
-          {verificationPassed ? (
+          {isPublished ? (
             <ul className="space-y-2 text-sm text-gray-700">
               <li className="flex items-start gap-2">
                 <span className="text-green-500 font-bold">✓</span>
@@ -205,6 +328,21 @@ const SuccessPage = () => {
               <li className="flex items-start gap-2">
                 <span className="text-green-500 font-bold">✓</span>
                 <span>Manage your ads from your dashboard anytime</span>
+              </li>
+            </ul>
+          ) : isBlocked ? (
+            <ul className="space-y-2 text-sm text-gray-700">
+              <li className="flex items-start gap-2">
+                <span className="text-red-500 font-bold">✗</span>
+                <span>Review and edit your ad to comply with our guidelines</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-red-500 font-bold">✗</span>
+                <span>Submit a new ad with corrected content</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-red-500 font-bold">✗</span>
+                <span>Contact support if you believe this was an error</span>
               </li>
             </ul>
           ) : (
@@ -231,16 +369,24 @@ const SuccessPage = () => {
 
         {/* Auto-redirect notice */}
         <div className="text-center mb-6">
-          <div className={`inline-flex items-center gap-2 ${verificationPassed ? 'bg-blue-100 border-blue-300' : 'bg-orange-100 border-orange-300'} border rounded-full px-4 py-2 animate-pulse`}>
-            <span className={`${verificationPassed ? 'text-blue-700' : 'text-orange-700'} text-sm font-semibold`}>
-              {verificationPassed ? `Auto-redirecting to homepage in ${countdown}s` : `Redirecting in ${countdown}s`}
+          <div className={`inline-flex items-center gap-2 ${
+            isPublished ? 'bg-blue-100 border-blue-300' : 
+            isBlocked ? 'bg-red-100 border-red-300' :
+            'bg-orange-100 border-orange-300'
+          } border rounded-full px-4 py-2 animate-pulse`}>
+            <span className={`${
+              isPublished ? 'text-blue-700' : 
+              isBlocked ? 'text-red-700' :
+              'text-orange-700'
+            } text-sm font-semibold`}>
+              Redirecting to homepage in {countdown}s
             </span>
           </div>
         </div>
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3">
-          {verificationPassed && uploadedAdId && (
+          {isPublished && uploadedAdId && (
             <button
               onClick={handleViewAd}
               className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl font-bold flex items-center justify-center gap-2"
@@ -248,7 +394,18 @@ const SuccessPage = () => {
               <span>👁️</span> View My Ad
             </button>
           )}
-          {!verificationPassed && (
+          {isBlocked && (
+            <button
+              onClick={() => {
+                dispatch(resetAdPost());
+                navigate("/post-ads");
+              }}
+              className="flex-1 px-6 py-4 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-xl hover:from-red-700 hover:to-orange-700 transition-all duration-200 shadow-lg hover:shadow-xl font-bold flex items-center justify-center gap-2"
+            >
+              <span>📝</span> Create New Ad
+            </button>
+          )}
+          {isPending && (
             <button
               onClick={() => navigate("/my-ads")}
               className="flex-1 px-6 py-4 bg-gradient-to-r from-orange-600 to-yellow-600 text-white rounded-xl hover:from-orange-700 hover:to-yellow-700 transition-all duration-200 shadow-lg hover:shadow-xl font-bold flex items-center justify-center gap-2"
@@ -264,21 +421,23 @@ const SuccessPage = () => {
           </button>
         </div>
 
-        {/* Social Share Section (Optional) */}
-        <div className="mt-6 pt-6 border-t border-gray-200 text-center">
-          <p className="text-sm text-gray-600 mb-3">Share your success!</p>
-          <div className="flex justify-center gap-3">
-            <button className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600 transition-colors">
-              📘
-            </button>
-            <button className="w-10 h-10 rounded-full bg-sky-500 text-white flex items-center justify-center hover:bg-sky-600 transition-colors">
-              🐦
-            </button>
-            <button className="w-10 h-10 rounded-full bg-green-500 text-white flex items-center justify-center hover:bg-green-600 transition-colors">
-              💬
-            </button>
+        {/* Social Share Section (only show if published) */}
+        {isPublished && (
+          <div className="mt-6 pt-6 border-t border-gray-200 text-center">
+            <p className="text-sm text-gray-600 mb-3">Share your success!</p>
+            <div className="flex justify-center gap-3">
+              <button className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600 transition-colors">
+                📘
+              </button>
+              <button className="w-10 h-10 rounded-full bg-sky-500 text-white flex items-center justify-center hover:bg-sky-600 transition-colors">
+                🐦
+              </button>
+              <button className="w-10 h-10 rounded-full bg-green-500 text-white flex items-center justify-center hover:bg-green-600 transition-colors">
+                💬
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

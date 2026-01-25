@@ -1,38 +1,63 @@
 import React, { useState, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 
 const ImageUpload = ({ 
-  images = [], 
+  images, 
   onChange, 
-  maxImages,
-  freeImages, // Number of free images allowed
-  pricePerExtraImage, // Price for each additional image
-  adType = "Ads", // Ad type to control visibility
-  showImageUpload, // Control whether to show upload section
-  onExtraImagesChange // Callback for extra images count
+  maxImages, 
+  adType,
+  showImageUpload,
 }) => {
   const [imagePreviews, setImagePreviews] = useState([]);
-  const [extraImagesCount, setExtraImagesCount] = useState(0);
+  
+  // 🔥 Get tiered pricing from Redux
+  const pricingState = useSelector((state) => state.adPost.pricing) || {};
 
-  // Calculate extra images cost
-  useEffect(() => {
-    const extraCount = Math.max(0, images.length - freeImages);
-    setExtraImagesCount(extraCount);
-    if (onExtraImagesChange) {
-      onExtraImagesChange(extraCount);
-    }
-  }, [images.length, freeImages, onExtraImagesChange]);
+const {
+  freeLimit = 0,
+  bundleLimit = 0,
+  bundlePrice = 0,
+  perImagePrice = 0,
+  totalImageCost = 0,
+  currencySymbol = 'LKR',
+  costBreakdown = {
+    freeImages: 0,
+    bundleImages: 0,
+    bundleCost: 0,
+    perImageImages: 0,
+    perImageCost: 0
+  }
+} = pricingState;
+
 
   // Restore previews from persisted base64 data
   useEffect(() => {
     if (images.length > 0) {
-      const restoredPreviews = images.map((img, index) => ({
-        preview: img.base64 || img.preview,
-        name: img.name || `Image ${index + 1}`,
-        isFree: index < freeImages
-      }));
+      const restoredPreviews = images.map((img, index) => {
+        let imageType = 'free';
+        let price = 0;
+        
+        if (index >= freeLimit + bundleLimit) {
+          imageType = 'per-image';
+          price = perImagePrice;
+        } else if (index >= freeLimit) {
+          imageType = 'bundle';
+          price = bundlePrice;
+        }
+        
+        return {
+          preview: img.base64 || img.preview,
+          name: img.name || `Image ${index + 1}`,
+          imageType,
+          price,
+          index
+        };
+      });
       setImagePreviews(restoredPreviews);
+    } else {
+      setImagePreviews([]);
     }
-  }, [freeImages]);
+  }, [images, freeLimit, bundleLimit, bundlePrice, perImagePrice]);
 
   // Convert File to Base64
   const fileToBase64 = (file) => {
@@ -44,6 +69,33 @@ const ImageUpload = ({
     });
   };
 
+  // 🔥 Calculate additional cost for new images (TIERED)
+  const calculateAdditionalCost = (currentCount, newCount) => {
+    const totalAfter = currentCount + newCount;
+    
+    // Calculate current cost
+    let currentCost = 0;
+    if (currentCount > freeLimit + bundleLimit) {
+      currentCost = bundlePrice + ((currentCount - freeLimit - bundleLimit) * perImagePrice);
+    } else if (currentCount > freeLimit) {
+      currentCost = bundlePrice;
+    }
+    
+    // Calculate new cost
+    let newCost = 0;
+    if (totalAfter > freeLimit + bundleLimit) {
+      newCost = bundlePrice + ((totalAfter - freeLimit - bundleLimit) * perImagePrice);
+    } else if (totalAfter > freeLimit) {
+      newCost = bundlePrice;
+    }
+    
+    return {
+      additionalCost: newCost - currentCost,
+      totalCost: newCost,
+      totalAfter
+    };
+  };
+
   // Handle image upload
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
@@ -53,25 +105,38 @@ const ImageUpload = ({
       return;
     }
 
-    // Check if adding paid images
-    const currentExtraImages = Math.max(0, images.length - freeImages);
-    const newExtraImages = Math.max(0, (images.length + files.length) - freeImages);
-    const additionalPaidImages = newExtraImages - currentExtraImages;
-
-    if (additionalPaidImages > 0) {
-      const additionalCost = additionalPaidImages * pricePerExtraImage;
-      const confirmed = window.confirm(
-        `You are uploading ${additionalPaidImages} additional image(s).\n` +
-        `Cost: $${additionalCost} ($${pricePerExtraImage} per image)\n\n` +
-        `Total images: ${images.length + files.length}\n` +
-        `Free images: ${freeImages}\n` +
-        `Paid images: ${newExtraImages}\n\n` +
-        `Do you want to continue?`
-      );
+    // Calculate additional cost
+    const { additionalCost, totalCost, totalAfter } = calculateAdditionalCost(images.length, files.length);
+    
+    if (additionalCost > 0) {
+      let message = `You are uploading ${files.length} additional image(s).\n\n`;
       
-      if (!confirmed) {
-        return;
+      // Build breakdown message
+      if (totalAfter > freeLimit + bundleLimit) {
+        const freeImages = Math.min(freeLimit, totalAfter);
+        const bundleImages = Math.min(bundleLimit, Math.max(0, totalAfter - freeLimit));
+        const perImageImages = Math.max(0, totalAfter - freeLimit - bundleLimit);
+        
+        message += `Pricing breakdown:\n`;
+        message += `• Free images: ${freeImages}\n`;
+        if (bundleImages > 0) {
+          message += `• Bundle (${bundleImages} images): ${currencySymbol}${bundlePrice}\n`;
+        }
+        if (perImageImages > 0) {
+          message += `• Per-image (${perImageImages} images): ${currencySymbol}${perImagePrice} × ${perImageImages} = ${currencySymbol}${perImageImages * perImagePrice}\n`;
+        }
+        message += `\nTotal cost: ${currencySymbol}${totalCost}\n`;
+      } else if (totalAfter > freeLimit) {
+        const bundleImages = totalAfter - freeLimit;
+        message += `Bundle pricing: ${currencySymbol}${bundlePrice} for up to ${bundleLimit} images\n`;
+        message += `(You'll use ${bundleImages} of ${bundleLimit} bundle images)\n`;
       }
+      
+      message += `\nAdditional cost: ${currencySymbol}${additionalCost}\n\n`;
+      message += `Do you want to continue?`;
+      
+      const confirmed = window.confirm(message);
+      if (!confirmed) return;
     }
 
     try {
@@ -88,15 +153,8 @@ const ImageUpload = ({
       });
 
       const newImages = await Promise.all(newImagesPromises);
-      
       const allImages = [...images, ...newImages];
-      const allPreviews = allImages.map((img, index) => ({
-        preview: img.preview || img.base64,
-        name: img.name,
-        isFree: index < freeImages
-      }));
-
-      setImagePreviews(allPreviews);
+      
       onChange(allImages);
     } catch (error) {
       console.error('Error converting images:', error);
@@ -108,21 +166,8 @@ const ImageUpload = ({
   const handleRemoveImage = (index) => {
     const newImages = images.filter((_, i) => i !== index);
     onChange(newImages);
-    
-    const newPreviews = newImages.map((img, idx) => ({
-      preview: img.preview || img.base64,
-      name: img.name,
-      isFree: idx < freeImages
-    }));
-    setImagePreviews(newPreviews);
   };
 
-  // Calculate total cost
-  const calculateTotalCost = () => {
-    return extraImagesCount * pricePerExtraImage;
-  };
-
-  // Don't show image upload section for certain ad types (like Matrimony)
   if (!showImageUpload) {
     return (
       <div className="w-full">
@@ -149,24 +194,26 @@ const ImageUpload = ({
         <label className="block text-sm font-medium">
           Images * ({images.length}/{maxImages})
         </label>
-        {extraImagesCount > 0 && (
+        {totalImageCost > 0 && (
           <span className="text-sm font-semibold text-orange-600">
-            +${calculateTotalCost()} ({extraImagesCount} extra image{extraImagesCount !== 1 ? 's' : ''})
+            Total: {currencySymbol}{totalImageCost}
           </span>
         )}
       </div>
 
-      {/* Pricing Info */}
+      {/* 🔥 Tiered Pricing Info */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3 mb-4">
         <div className="flex items-start">
           <svg className="w-5 h-5 text-blue-600 mt-0.5 mr-2" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
           </svg>
           <div className="flex-1">
-            <p className="text-xs font-semibold text-blue-900">Image Pricing</p>
-            <p className="text-xs text-blue-700 mt-1">
-              First {freeImages} image{freeImages !== 1 ? 's' : ''} free • ${pricePerExtraImage} per additional image
-            </p>
+            <p className="text-xs font-semibold text-blue-900">Tiered Image Pricing</p>
+            <div className="text-xs text-blue-700 mt-1 space-y-0.5">
+              <p>• First {freeLimit} images: <span className="font-semibold text-green-600">FREE</span></p>
+              <p>• Next {bundleLimit} images: <span className="font-semibold text-purple-600">{currencySymbol}{bundlePrice} (Bundle)</span></p>
+              <p>• Additional images: <span className="font-semibold text-orange-600">{currencySymbol}{perImagePrice} each</span></p>
+            </div>
           </div>
         </div>
       </div>
@@ -216,17 +263,12 @@ const ImageUpload = ({
                     Maximum images reached
                   </p>
                 )}
-                {images.length < maxImages && images.length >= freeImages && (
-                  <p className="text-xs text-orange-600 mt-2 font-semibold">
-                    ${pricePerExtraImage} per additional image
-                  </p>
-                )}
               </div>
             </label>
           </div>
         </div>
 
-        {/* Right Side - Image Viewer/Previews */}
+        {/* Right Side - Image Previews */}
         <div className="order-1 md:order-2">
           <div className="border border-gray-300 rounded-lg p-4 min-h-[250px] bg-gray-50">
             {imagePreviews.length === 0 ? (
@@ -253,7 +295,9 @@ const ImageUpload = ({
                 {imagePreviews.map((preview, index) => (
                   <div key={index} className="relative group">
                     <div className={`aspect-square rounded-lg overflow-hidden border-2 ${
-                      preview.isFree ? 'border-green-400' : 'border-orange-400'
+                      preview.imageType === 'free' ? 'border-green-400' : 
+                      preview.imageType === 'bundle' ? 'border-purple-400' : 
+                      'border-orange-400'
                     }`}>
                       <img
                         src={preview.preview}
@@ -262,13 +306,15 @@ const ImageUpload = ({
                       />
                     </div>
                     
-                    {/* Free/Paid Badge */}
+                    {/* 🔥 Tiered Badge */}
                     <div className={`absolute top-2 left-2 text-xs px-2 py-1 rounded font-semibold ${
-                      preview.isFree 
-                        ? 'bg-green-500 text-white' 
-                        : 'bg-orange-500 text-white'
+                      preview.imageType === 'free' ? 'bg-green-500 text-white' : 
+                      preview.imageType === 'bundle' ? 'bg-purple-500 text-white' : 
+                      'bg-orange-500 text-white'
                     }`}>
-                      {preview.isFree ? 'FREE' : `$${pricePerExtraImage}`}
+                      {preview.imageType === 'free' ? 'FREE' : 
+                       preview.imageType === 'bundle' ? 'BUNDLE' : 
+                       `${currencySymbol}${perImagePrice}`}
                     </div>
                     
                     {/* Remove Button */}
@@ -293,22 +339,53 @@ const ImageUpload = ({
         </div>
       </div>
 
-      {/* Cost Summary */}
+      {/* 🔥 Detailed Cost Summary */}
       {images.length > 0 && (
         <div className="mt-4 p-4 bg-gradient-to-r from-gray-50 to-blue-50 rounded-lg border border-gray-200">
-          <div className="flex justify-between items-center text-sm">
-            <span className="font-medium text-gray-700">
-              Free images: <span className="text-green-600 font-bold">{Math.min(images.length, freeImages)}</span>
-            </span>
-            {extraImagesCount > 0 && (
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between items-center">
               <span className="font-medium text-gray-700">
-                Paid images: <span className="text-orange-600 font-bold">{extraImagesCount}</span>
+                Free images:
               </span>
+              <span className="text-green-600 font-bold">
+                {costBreakdown.freeImages} × FREE
+              </span>
+            </div>
+            
+            {costBreakdown.bundleImages > 0 && (
+              <div className="flex justify-between items-center">
+                <span className="font-medium text-gray-700">
+                  Bundle images:
+                </span>
+                <span className="text-purple-600 font-bold">
+                  {costBreakdown.bundleImages} = {currencySymbol}{costBreakdown.bundleCost}
+                </span>
+              </div>
             )}
-            {extraImagesCount > 0 && (
-              <span className="font-bold text-blue-900">
-                Extra Cost: <span className="text-orange-600">${calculateTotalCost()}</span>
-              </span>
+            
+            {costBreakdown.perImageImages > 0 && (
+              <div className="flex justify-between items-center">
+                <span className="font-medium text-gray-700">
+                  Per-image pricing:
+                </span>
+                <span className="text-orange-600 font-bold">
+                  {costBreakdown.perImageImages} × {currencySymbol}{perImagePrice} = {currencySymbol}{costBreakdown.perImageCost}
+                </span>
+              </div>
+            )}
+            
+            {totalImageCost > 0 && (
+              <>
+                <div className="border-t border-gray-300 my-2"></div>
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-gray-900">
+                    Total Image Cost:
+                  </span>
+                  <span className="font-bold text-blue-900 text-lg">
+                    {currencySymbol}{totalImageCost}
+                  </span>
+                </div>
+              </>
             )}
           </div>
         </div>

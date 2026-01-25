@@ -3,6 +3,7 @@ import { PlusCircle, Search, Users, Grid, List, Filter, Star, Eye, Crown, MapPin
 import { useNavigate } from "react-router-dom";
 import { useGetAllPagesQuery, useDeletePageMutation } from '../../features/pageApiSlice';
 import { useGetUserFollowedPagesQuery} from '../../features/page.flowwingSlice';
+import Swal from 'sweetalert2';
 
 const Pages = () => {
   const navigate = useNavigate();
@@ -34,6 +35,127 @@ const Pages = () => {
 
   const viewPageDetail = (pageId) => {
     navigate(`/page/${pageId}`)
+  };
+
+  // ✅ Delete handler function with SweetAlert2
+  const handleDeletePage = async (e, page) => {
+    e.stopPropagation();
+    
+    const result = await Swal.fire({
+      title: '<strong>Delete Page?</strong>',
+      html: `
+        <div class="text-left space-y-3 p-4">
+          <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <p class="text-sm text-gray-600 mb-1">Page Title:</p>
+            <p class="font-bold text-gray-900 text-lg">${page.title}</p>
+          </div>
+          ${page.category?.name ? `
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-gray-600">Category:</span>
+              <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full font-bold">
+                ${page.category.name}
+              </span>
+            </div>
+          ` : ''}
+          ${page.followersCount ? `
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-gray-600">Followers:</span>
+              <span class="font-semibold text-gray-900">${page.followersCount}</span>
+            </div>
+          ` : ''}
+          <div class="bg-red-50 border border-red-200 rounded-lg p-3 mt-4">
+            <p class="text-sm text-red-700 font-semibold flex items-center gap-2">
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+              </svg>
+              Warning: This action cannot be undone!
+            </p>
+          </div>
+        </div>
+      `,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: '<i class="fas fa-trash-alt"></i> Yes, Delete',
+      cancelButtonText: '<i class="fas fa-times"></i> Cancel',
+      reverseButtons: true,
+      focusCancel: true,
+      width: '500px',
+      padding: '2em',
+      customClass: {
+        popup: 'rounded-2xl shadow-2xl',
+        title: 'text-2xl font-black text-gray-900',
+        htmlContainer: 'text-left',
+        confirmButton: 'font-bold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all',
+        cancelButton: 'font-bold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all'
+      },
+      buttonsStyling: true
+    });
+
+    if (result.isConfirmed) {
+      Swal.fire({
+        title: 'Deleting Page...',
+        html: '<div class="flex flex-col items-center gap-3"><div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div><p class="text-gray-600">Please wait...</p></div>',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        customClass: {
+          popup: 'rounded-2xl'
+        }
+      });
+
+      try {
+        await deletePage(page._id).unwrap();
+        
+        Swal.fire({
+          title: '<strong>Deleted!</strong>',
+          html: `
+            <div class="text-center">
+              <div class="mb-3">
+                <svg class="w-16 h-16 mx-auto text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              </div>
+              <p class="text-gray-700 font-medium">Your page has been deleted successfully.</p>
+            </div>
+          `,
+          icon: 'success',
+          confirmButtonColor: '#10b981',
+          confirmButtonText: 'OK',
+          timer: 2500,
+          timerProgressBar: true,
+          customClass: {
+            popup: 'rounded-2xl',
+            confirmButton: 'font-bold px-6 py-3 rounded-xl'
+          }
+        });
+      } catch (error) {
+        console.error('Delete error:', error);
+        
+        Swal.fire({
+          title: '<strong>Error!</strong>',
+          html: `
+            <div class="text-center">
+              <div class="mb-3">
+                <svg class="w-16 h-16 mx-auto text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              </div>
+              <p class="text-gray-700 font-medium">${error.data?.message || error.message || 'Failed to delete page.'}</p>
+              <p class="text-sm text-gray-500 mt-2">Please try again later.</p>
+            </div>
+          `,
+          icon: 'error',
+          confirmButtonColor: '#ef4444',
+          confirmButtonText: 'OK',
+          customClass: {
+            popup: 'rounded-2xl',
+            confirmButton: 'font-bold px-6 py-3 rounded-xl'
+          }
+        });
+      }
+    }
   };
 
   // Process pages data
@@ -518,19 +640,10 @@ const Pages = () => {
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
+                          
+                          {/* ✅ Updated Delete Button with SweetAlert2 */}
                           <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (window.confirm(`Are you sure you want to delete "${page.title}"? This action cannot be undone.`)) {
-                                try {
-                                  await deletePage(page._id).unwrap();
-                                  alert('Page deleted successfully!');
-                                } catch (error) {
-                                  console.error('Delete error:', error);
-                                  alert('Failed to delete page: ' + (error.data?.message || error.message));
-                                }
-                              }
-                            }}
+                            onClick={(e) => handleDeletePage(e, page)}
                             disabled={deleting}
                             className="bg-red-600 text-white p-2.5 rounded-lg shadow-lg hover:bg-red-700 transition-all transform hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Delete Page"
@@ -669,4 +782,3 @@ const Pages = () => {
 };
 
 export default Pages;
-

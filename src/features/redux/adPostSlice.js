@@ -30,7 +30,7 @@ const initialState = {
     village: "",
     userType: "",
     typeofads: "", // user chooses: "Advertisement", "Needs", or "Offers"
-    page: null, // 🔥 NEW: page ID when posting as page (extracted from selectedPage._id)
+    page: null,
     specialQuestions: {},
     contact: {
       phone: "",
@@ -40,10 +40,32 @@ const initialState = {
     },
   },
 
-  // Pricing configuration
+  // 🔥 FIXED: Complete tiered pricing configuration
   pricing: {
+    // Tiered pricing structure
+    freeLimit: 2,              // Number of free images
+    bundleLimit: 5,            // Number of images in bundle
+    bundlePrice: 0,            // Price for the bundle
+    perImagePrice: 0,          // Price per additional image
+    
+    // Cost calculations
+    totalImageCost: 0,         // 🔥 ADDED: Total cost for images
+    
+    // Cost breakdown
+    costBreakdown: {           // 🔥 ADDED: Detailed breakdown
+      freeImages: 0,
+      bundleImages: 0,
+      bundleCost: 0,
+      perImageImages: 0,
+      perImageCost: 0,
+    },
+    
+    // Currency
+    currencySymbol: '$',
+    
+    // Legacy fields (kept for backward compatibility)
     extraImagesCount: 0,
-    pricePerExtraImage: 100,
+    pricePerExtraImage: 0,
     extraImagesCost: 0,
     freeImagesLimit: 2,
     showImageUpload: true,
@@ -67,24 +89,20 @@ const adPostSlice = createSlice({
       console.log("✅ Uploaded Ad ID saved to Redux:", action.payload);
     },
 
-    // Set account type (user or page)
     setAccountType: (state, action) => {
       state.accountType = action.payload;
       console.log("✅ Account type set to:", action.payload);
       
-      // 🔥 NEW: If switching to 'user', clear page ID
       if (action.payload === 'user') {
         state.formData.page = null;
         console.log("🔥 Cleared page ID (posting as user)");
       }
     },
 
-    // Set selected page
     setSelectedPage: (state, action) => {
       state.selectedPage = action.payload;
       console.log("✅ Selected page:", action.payload);
       
-      // 🔥 NEW: Automatically set page ID in formData when page is selected
       if (action.payload && action.payload._id) {
         state.formData.page = action.payload._id;
         console.log("🔥 Page ID set in formData:", action.payload._id);
@@ -117,23 +135,58 @@ const adPostSlice = createSlice({
       state.formData.typeofads = action.payload;
     },
 
+    // 🔥 FIXED: Properly merge all pricing updates
     updatePricing: (state, action) => {
-      state.pricing = { ...state.pricing, ...action.payload };
+      console.log("💰 updatePricing called with:", action.payload);
+      
+      // Merge the new pricing data
+      state.pricing = { 
+        ...state.pricing, 
+        ...action.payload 
+      };
+      
+      // If costBreakdown is provided, merge it properly
+      if (action.payload.costBreakdown) {
+        state.pricing.costBreakdown = {
+          ...state.pricing.costBreakdown,
+          ...action.payload.costBreakdown
+        };
+      }
+      
+      console.log("💰 Updated pricing state:", state.pricing);
     },
 
     setExtraImagesCount: (state, action) => {
       state.pricing.extraImagesCount = action.payload;
       state.pricing.extraImagesCost =
         action.payload * state.pricing.pricePerExtraImage;
+      console.log("📸 Extra images count:", action.payload);
+      console.log("💰 Extra images cost:", state.pricing.extraImagesCost);
     },
 
-    // 🔥 NEW: Manually set page ID in formData (optional, if needed)
+    setPricePerExtraImage: (state, action) => {
+      console.log("💰 setPricePerExtraImage called with:", action.payload);
+      state.pricing.pricePerExtraImage = action.payload;
+      state.pricing.extraImagesCost = 
+        state.pricing.extraImagesCount * action.payload;
+      console.log("💰 Price per extra image updated to:", action.payload);
+      console.log("💰 Extra images cost recalculated:", state.pricing.extraImagesCost);
+    },
+
+    setCurrencySymbol: (state, action) => {
+      console.log("💱 setCurrencySymbol called with:", action.payload);
+      state.pricing.currencySymbol = action.payload;
+    },
+
     setPageId: (state, action) => {
       state.formData.page = action.payload;
       console.log("🔥 Page ID manually set to:", action.payload);
     },
 
-    resetAdPost: () => initialState,
+    resetAdPost: () => {
+      console.log("🔄 Resetting ad post state to initial values");
+      return initialState;
+    },
   },
 });
 
@@ -149,7 +202,9 @@ export const {
   setTypeOfAds,
   updatePricing,
   setExtraImagesCount,
-  setPageId, // 🔥 NEW: Export setPageId action
+  setPricePerExtraImage,
+  setCurrencySymbol,
+  setPageId,
   resetAdPost,
 } = adPostSlice.actions;
 
