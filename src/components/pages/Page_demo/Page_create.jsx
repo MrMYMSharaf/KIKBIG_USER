@@ -305,6 +305,7 @@ const Page_create = () => {
             ...formData,
             location: cleanLocation,
             pagetype: pageType?._id
+            
           };
 
           delete payload.userId;

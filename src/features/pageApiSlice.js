@@ -71,6 +71,14 @@ export const pageApiSlice = createApi({
       ],
     }),
 
+    incrementViews: builder.mutation({
+  query: (pageId) => ({
+    url: `/page/${pageId}/views`,
+    method: "POST",
+  }),
+  invalidatesTags: (result, error, pageId) => [{ type: "Page", id: pageId }, "Page"],
+}),
+
     // DELETE Page
     deletePage: builder.mutation({
       query: (id) => ({
@@ -90,5 +98,6 @@ export const {
   useGetPageBySlugQuery,
   useUpdatePageMutation,
   useDeletePageMutation,
+  useIncrementViewsMutation,
 } = pageApiSlice;
 

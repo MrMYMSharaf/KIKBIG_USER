@@ -27,7 +27,6 @@ export const postadvertisementApi = createApi({
       providesTags: ['Advertisement'],
     }),
 
-    // ✅ FIXED: Updated endpoint path
     getMyAdvertisements: builder.query({
       query: ({ page = 1, limit = 10 } = {}) => ({
         url: `/api/advertisement/my-ads`,
@@ -37,14 +36,28 @@ export const postadvertisementApi = createApi({
       providesTags: ["Advertisement"],
     }),
 
+    // ✅ NEW: Get advertisements by page ID
+    getAdvertisementsByPageId: builder.query({
+      query: ({ pageId, page = 1, limit = 20 } = {}) => ({
+        url: `/api/advertisement/page/${pageId}`,
+        method: "GET",
+        params: { page, limit },
+      }),
+      providesTags: (result, error, { pageId }) => [
+        { type: "Advertisement", id: `PAGE-${pageId}` },
+        'Advertisement'
+      ],
+    }),
+
     getAdvertisementById: builder.query({
-  query: (id) => ({
-    url: `/api/advertisement/view/${id}`,
-    method: "GET",
-  }),
-  providesTags: (result, error, id) => [{ type: "Advertisement", id }],
-  keepUnusedDataFor: 5, // Cache for only 5 seconds
-}),
+      query: (id) => ({
+        url: `/api/advertisement/view/${id}`,
+        method: "GET",
+      }),
+      providesTags: (result, error, id) => [{ type: "Advertisement", id }],
+      keepUnusedDataFor: 5,
+    }),
+
     getAllAdvertisementsAds: builder.query({
       query: ({ page = 1, limit = 10 } = {}) => ({
         url: `/api/advertisement/ads`,
@@ -72,75 +85,61 @@ export const postadvertisementApi = createApi({
       providesTags: ['Advertisement'],
     }),
 
-    // ✅ SLUG-BASED: Get advertisements by category/subcategory using slugs
-  // In src/features/postadsSlice.js
+    getAdvertisementsByCategory: builder.query({
+      query: ({ countrySlug, mode, categorySlug, subCategorySlug, page = 1, limit = 10 }) => {
+        let url = '/api';
+        
+        if (countrySlug && categorySlug) {
+          const modeSegment = mode || 'viewallads';
+          url += `/${countrySlug}/${modeSegment}/${categorySlug}`;
+          
+          if (subCategorySlug && subCategorySlug !== "undefined") {
+            url += `/${subCategorySlug}`;
+          }
+        } else if (categorySlug) {
+          const modeSegment = mode || 'viewallads';
+          url += `/${modeSegment}/${categorySlug}`;
+          
+          if (subCategorySlug && subCategorySlug !== "undefined") {
+            url += `/${subCategorySlug}`;
+          }
+        }
 
-// src/features/postadsSlice.js
+        return {
+          url,
+          method: "GET",
+          params: { page, limit },
+        };
+      },
+      providesTags: ['Advertisement'],
+    }),
 
-getAdvertisementsByCategory: builder.query({
-  query: ({ countrySlug, mode, categorySlug, subCategorySlug, page = 1, limit = 10 }) => {
-    let url = '/api';
-    
-    // ✅ FIXED: Include mode in URL path
-    if (countrySlug && categorySlug) {
-      const modeSegment = mode || 'viewallads'; // default to viewallads
-      url += `/${countrySlug}/${modeSegment}/${categorySlug}`;
-      
-      // Only add subcategory if it exists and is valid
-      if (subCategorySlug && subCategorySlug !== "undefined") {
-        url += `/${subCategorySlug}`;
-      }
-    } else if (categorySlug) {
-      // Only category, no country
-      const modeSegment = mode || 'viewallads';
-      url += `/${modeSegment}/${categorySlug}`;
-      
-      if (subCategorySlug && subCategorySlug !== "undefined") {
-        url += `/${subCategorySlug}`;
-      }
-    }
+    getAdvertisementsAdsByCountry: builder.query({
+      query: ({ countrySlug, page = 1, limit = 12 }) => ({
+        url: `/api/${countrySlug}/ads`,
+        method: "GET",
+        params: { page, limit },
+      }),
+      providesTags: ["Advertisement"],
+    }),
 
-    console.log('🔍 API URL being called:', url); // Debug log
+    getNeedsByCountry: builder.query({
+      query: ({ countrySlug, page = 1, limit = 12 }) => ({
+        url: `/api/${countrySlug}/needs`,
+        method: "GET",
+        params: { page, limit },
+      }),
+      providesTags: ["Advertisement"],
+    }),
 
-    return {
-      url,
-      method: "GET",
-      params: { page, limit },
-    };
-  },
-  providesTags: ['Advertisement'],
-}),
-
-getAdvertisementsAdsByCountry: builder.query({
-  query: ({ countrySlug, page = 1, limit = 12 }) => ({
-    url: `/api/${countrySlug}/ads`,
-    method: "GET",
-    params: { page, limit },
-  }),
-  providesTags: ["Advertisement"],
-}),
-
-getNeedsByCountry: builder.query({
-  query: ({ countrySlug, page = 1, limit = 12 }) => ({
-    url: `/api/${countrySlug}/needs`,
-    method: "GET",
-    params: { page, limit },
-  }),
-  providesTags: ["Advertisement"],
-}),
-
-getOffersByCountry: builder.query({
-  query: ({ countrySlug, page = 1, limit = 12 }) => ({
-    url: `/api/${countrySlug}/offers`,
-    method: "GET",
-    params: { page, limit },
-  }),
-  providesTags: ["Advertisement"],
-}),
-
-
-
-
+    getOffersByCountry: builder.query({
+      query: ({ countrySlug, page = 1, limit = 12 }) => ({
+        url: `/api/${countrySlug}/offers`,
+        method: "GET",
+        params: { page, limit },
+      }),
+      providesTags: ["Advertisement"],
+    }),
 
     updateAdvertisement: builder.mutation({
       query: ({ id, formData }) => ({
@@ -155,16 +154,16 @@ getOffersByCountry: builder.query({
     }),
 
     updateAdvertisementStatus: builder.mutation({
-  query: ({ id, status, verificationResult }) => ({
-    url: `/api/advertisement/${id}/status`,
-    method: "PUT",
-    body: { status, verificationResult },
-  }),
-  invalidatesTags: (result, error, { id }) => [
-    { type: "Advertisement", id },
-    'Advertisement',
-  ],
-}),
+      query: ({ id, status, verificationResult }) => ({
+        url: `/api/advertisement/${id}/status`,
+        method: "PUT",
+        body: { status, verificationResult },
+      }),
+      invalidatesTags: (result, error, { id }) => [
+        { type: "Advertisement", id },
+        'Advertisement',
+      ],
+    }),
 
     deleteAdvertisement: builder.mutation({
       query: (id) => ({
@@ -194,5 +193,5 @@ export const {
   useGetNeedsByCountryQuery,
   useGetOffersByCountryQuery, 
   useUpdateAdvertisementStatusMutation,
+  useGetAdvertisementsByPageIdQuery, // ✅ NEW: Export the hook
 } = postadvertisementApi;
-

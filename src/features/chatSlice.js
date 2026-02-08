@@ -4,7 +4,7 @@ export const chatApi = createApi({
   reducerPath: "chatApi",
   baseQuery: fetchBaseQuery({
     baseUrl: "http://localhost:4000/mychatgroup",
-    credentials: "include", // 🔥 sends JWT cookies
+    credentials: "include",
     prepareHeaders: (headers) => {
       headers.set("Content-Type", "application/json");
       return headers;
@@ -12,45 +12,70 @@ export const chatApi = createApi({
   }),
   tagTypes: ["Messages", "ChatList"],
   endpoints: (builder) => ({
-
-    // --------------------------------------------------
-    // SEND MESSAGE (senderId from JWT)
-    // --------------------------------------------------
+    // ✅ Send message as user
     sendMessage: builder.mutation({
       query: ({ receiverId, receiverType, message }) => ({
         url: "/message",
         method: "POST",
-        body: { receiverId, receiverType, message }, // ✅ Added receiverType
+        body: { receiverId, receiverType, message },
       }),
       invalidatesTags: ["Messages", "ChatList"],
+      transformErrorResponse: (response) => {
+        console.error("Send message error:", response);
+        return response;
+      },
     }),
 
-    // --------------------------------------------------
-    // GET MESSAGES (logged-in user from JWT)
-    // --------------------------------------------------
+    // ✅ NEW: Send message as page
+    sendMessageAsPage: builder.mutation({
+      query: ({ pageId, receiverId, receiverType, message }) => ({
+        url: "/message/page",
+        method: "POST",
+        body: { pageId, receiverId, receiverType, message },
+      }),
+      invalidatesTags: ["Messages", "ChatList"],
+      transformErrorResponse: (response) => {
+        console.error("Send page message error:", response);
+        return response;
+      },
+    }),
+
+    // ✅ Get messages
     getMessages: builder.query({
       query: ({ receiverId, receiverType }) => ({
-        url: `/messages?receiverId=${receiverId}&receiverType=${receiverType}`, // ✅ Added receiverType
+        url: `/messages?receiverId=${receiverId}&receiverType=${receiverType}`,
         method: "GET",
       }),
       providesTags: ["Messages"],
+      transformErrorResponse: (response) => {
+        console.error("Get messages error:", response);
+        return response;
+      },
     }),
 
-    // --------------------------------------------------
-    // GET CHAT LIST (userId from JWT)
-    // --------------------------------------------------
+    // ✅ Get chat list with optional page filter
     getChatList: builder.query({
-      query: () => ({
-        url: "/messages/chats",
-        method: "GET",
-      }),
+      query: (pageId) => {
+        const url = pageId && pageId !== 'all'
+          ? `/messages/chats?pageId=${pageId}`
+          : '/messages/chats';
+        return {
+          url,
+          method: "GET",
+        };
+      },
       providesTags: ["ChatList"],
+      transformErrorResponse: (response) => {
+        console.error("Get chat list error:", response);
+        return response;
+      },
     }),
   }),
 });
 
 export const {
   useSendMessageMutation,
+  useSendMessageAsPageMutation, // ✅ NEW
   useGetMessagesQuery,
   useGetChatListQuery,
 } = chatApi;

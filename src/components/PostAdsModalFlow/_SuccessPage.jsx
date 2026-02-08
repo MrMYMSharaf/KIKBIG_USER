@@ -2,8 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { resetAdPost } from "../../features/redux/adPostSlice";
-import { useGetVerificationByAdIdQuery } from "../../features/aiverificationoutputSlice";
-import { useGetAdvertisementByIdQuery } from "../../features/postadsSlice"; // 🔥 NEW: Import to get current ad status
+import { useGetAdvertisementByIdQuery } from "../../features/postadsSlice";
 
 const SuccessPage = () => {
   const navigate = useNavigate();
@@ -11,32 +10,23 @@ const SuccessPage = () => {
   const { formData, uploadedAdId } = useSelector((state) => state.adPost);
   const [countdown, setCountdown] = useState(10);
   
-  // 🔥 NEW: Fetch current advertisement to get real-time status
+  // Fetch current advertisement to get real-time status
   const { data: adData, isLoading: adLoading } = useGetAdvertisementByIdQuery(uploadedAdId, {
     skip: !uploadedAdId,
-    pollingInterval: 2000, // Poll every 2 seconds to get updated status
+    pollingInterval: 2000, // Poll every 2 seconds
   });
   
-  // Fetch verification result from database
-  const { data: verificationData, isLoading: verificationLoading } = useGetVerificationByAdIdQuery(uploadedAdId, {
-    skip: !uploadedAdId
-  });
+  const currentAd = adData?.data;
   
-  const verificationResult = verificationData?.data?.[0]; // Get first (latest) verification
-  const currentAd = adData?.data; // 🔥 NEW: Get current ad with status
-  
-  // 🔥 FIXED: Check BOTH verification result AND current ad status
+  // 🔥 UPDATED: Since AI verification is disabled, all ads will be "inactive" (pending manual review)
   const adStatus = currentAd?.status || "inactive";
-  const verificationPassed = verificationResult?.success ?? true; // Default to true if no verification data
-  
-  // 🔥 CRITICAL: Determine if ad is actually published (active)
-  const isPublished = adStatus === "active" && verificationPassed;
-  const isBlocked = adStatus === "Ai_Blocked" || !verificationPassed;
   const isPending = adStatus === "inactive";
+  const isPublished = adStatus === "active"; // Will be active after manual approval
+  const isBlocked = adStatus === "Ai_Blocked";
 
-  console.log("📊 Success Page Status:", { adStatus, verificationPassed, isPublished, isBlocked, isPending });
+  console.log("📊 Success Page Status:", { adStatus, isPending, isPublished, isBlocked });
 
-  // Auto-redirect countdown - 🔥 FIXED: 1 second intervals
+  // Auto-redirect countdown
   useEffect(() => {
     if (countdown <= 0) {
       handleGoHome();
@@ -45,7 +35,7 @@ const SuccessPage = () => {
 
     const timer = setInterval(() => {
       setCountdown((prev) => prev - 1);
-    }, 1000); // 🔥 FIXED: Changed from 3000 to 1000 (1 second)
+    }, 1000);
 
     return () => clearInterval(timer);
   }, [countdown]);
@@ -62,8 +52,8 @@ const SuccessPage = () => {
     }
   };
 
-  // Show loading state while fetching verification
-  if (verificationLoading || adLoading) {
+  // Show loading state
+  if (adLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -78,10 +68,10 @@ const SuccessPage = () => {
     <div className={`min-h-screen bg-gradient-to-br ${
       isPublished ? 'from-green-50 via-blue-50 to-purple-50' : 
       isBlocked ? 'from-red-50 via-orange-50 to-yellow-50' :
-      'from-orange-50 via-yellow-50 to-red-50'
+      'from-orange-50 via-yellow-50 to-blue-50'
     } flex items-center justify-center p-4`}>
       <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-12 max-w-2xl w-full">
-        {/* Icon Animation - Success, Blocked, or Pending */}
+        {/* Icon Animation */}
         <div className="flex justify-center mb-6">
           <div className="relative">
             <div className={`absolute inset-0 ${
@@ -99,7 +89,7 @@ const SuccessPage = () => {
           </div>
         </div>
 
-        {/* Message - Success, Blocked, or Manual Review */}
+        {/* Message */}
         {isPublished ? (
           <>
             <h1 className="text-4xl font-bold text-center text-gray-900 mb-3">
@@ -107,7 +97,7 @@ const SuccessPage = () => {
             </h1>
             
             <p className="text-center text-gray-600 text-lg mb-6">
-              Your <span className="font-bold text-blue-600">{formData.typeofads || "advertisement"}</span> has been verified and is now live!
+              Your <span className="font-bold text-blue-600">{formData.typeofads || "advertisement"}</span> has been approved and is now live!
             </p>
           </>
         ) : isBlocked ? (
@@ -117,114 +107,57 @@ const SuccessPage = () => {
             </h1>
             
             <p className="text-center text-gray-700 text-lg mb-6">
-              Your <span className="font-bold text-blue-600">{formData.typeofads || "advertisement"}</span> did not pass our AI verification.
+              Your <span className="font-bold text-blue-600">{formData.typeofads || "advertisement"}</span> did not pass our review.
             </p>
-            
-            {/* Blocked Notice */}
-            <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-6 mb-6">
-              <div className="flex items-start gap-4">
-                <div className="text-4xl">🚫</div>
-                <div>
-                  <h3 className="font-bold text-red-900 text-xl mb-2">
-                    Content Violation Detected
-                  </h3>
-                  <p className="text-red-800 mb-3">
-                    Our AI verification system detected content that violates our community guidelines.
-                  </p>
-                  <div className="bg-white rounded-lg p-4 border border-red-200">
-                    <p className="font-semibold text-gray-900 mb-2">Why was my ad blocked?</p>
-                    <p className="text-sm text-gray-700 mb-3">
-                      {verificationResult?.message || "The content did not meet our safety and quality standards."}
-                    </p>
-                    
-                    {/* Show specific issues if available */}
-                    {verificationResult?.text_check?.issues && verificationResult.text_check.issues.length > 0 && (
-                      <>
-                        <p className="font-semibold text-gray-900 mb-2 text-sm">Specific Issues:</p>
-                        <ul className="space-y-1 text-sm text-red-700 ml-4">
-                          {verificationResult.text_check.issues.map((issue, idx) => (
-                            <li key={idx} className="flex items-start gap-2">
-                              <span>•</span>
-                              <span>{issue}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </>
-                    )}
-                  </div>
-                  <div className="bg-white rounded-lg p-4 border border-red-200 mt-3">
-                    <p className="font-semibold text-gray-900 mb-2">What can I do?</p>
-                    <ul className="space-y-2 text-sm text-gray-700">
-                      <li className="flex items-start gap-2">
-                        <span className="text-red-500 font-bold">1.</span>
-                        <span>Review our community guidelines and terms of service</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-red-500 font-bold">2.</span>
-                        <span>Edit your ad to remove any prohibited content</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-red-500 font-bold">3.</span>
-                        <span>Submit a new advertisement that complies with our policies</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-red-500 font-bold">4.</span>
-                        <span>Contact support if you believe this was an error</span>
-                      </li>
-                    </ul>
-                  </div>
-                  <p className="text-sm text-red-700 mt-3 italic">
-                    ⚠️ <strong>Note:</strong> Repeatedly posting prohibited content may result in account suspension.
-                  </p>
-                </div>
-              </div>
-            </div>
           </>
         ) : (
           <>
             <h1 className="text-4xl font-bold text-center text-orange-600 mb-3">
-              ⏳ Manual Review Required
+              ⏳ Submitted for Review
             </h1>
             
             <p className="text-center text-gray-700 text-lg mb-6">
-              Your <span className="font-bold text-blue-600">{formData.typeofads || "advertisement"}</span> has been submitted for review.
+              Your <span className="font-bold text-blue-600">{formData.typeofads || "advertisement"}</span> has been submitted successfully!
             </p>
             
             {/* Manual Review Notice */}
-            <div className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-6 mb-6">
+            <div className="bg-gradient-to-r from-orange-50 to-yellow-50 border-2 border-orange-300 rounded-2xl p-6 mb-6">
               <div className="flex items-start gap-4">
-                <div className="text-4xl">🔍</div>
+                <div className="text-5xl">🔍</div>
                 <div>
                   <h3 className="font-bold text-orange-900 text-xl mb-2">
-                    Your Ad is Under Review
+                    Manual Review in Progress
                   </h3>
                   <p className="text-orange-800 mb-3">
-                    Our AI verification system flagged some content that requires manual verification. Don't worry - this is a standard safety procedure!
+                    Our team will review your ad to ensure it meets our quality standards.
                   </p>
                   <div className="bg-white rounded-lg p-4 border border-orange-200">
                     <p className="font-semibold text-gray-900 mb-2">What happens next?</p>
                     <ul className="space-y-2 text-sm text-gray-700">
                       <li className="flex items-start gap-2">
                         <span className="text-orange-500 font-bold">1.</span>
-                        <span>Our team will manually review your ad within <strong>24-48 hours</strong></span>
+                        <span>Our team will review your ad within <strong>24 hours</strong></span>
                       </li>
                       <li className="flex items-start gap-2">
                         <span className="text-orange-500 font-bold">2.</span>
-                        <span>If your ad complies with our policies, it will be published automatically</span>
+                        <span>If approved, your ad will be published automatically</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <span className="text-orange-500 font-bold">3.</span>
-                        <span>If there are issues, we'll contact you via email with feedback</span>
+                        <span>You'll receive an email notification once published</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <span className="text-orange-500 font-bold">4.</span>
-                        <span>You'll receive a notification once the review is complete</span>
+                        <span>If issues are found, we'll contact you with feedback</span>
                       </li>
                     </ul>
                   </div>
-                  <p className="text-sm text-orange-700 mt-3 italic">
-                    ⚠️ <strong>Sorry for the wait!</strong> We're committed to maintaining a safe marketplace for everyone.
-                  </p>
+                  <div className="bg-white rounded-lg p-4 border border-orange-200 mt-3">
+                    <p className="text-sm text-orange-700 italic flex items-start gap-2">
+                      <span className="text-xl">💡</span>
+                      <span><strong>Note:</strong> We're manually reviewing all ads to ensure the best quality for our users. Thank you for your patience!</span>
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -233,7 +166,7 @@ const SuccessPage = () => {
 
         {/* Ad Details Card */}
         <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-6 mb-6 border-2 border-blue-200">
-          <h3 className="font-bold text-gray-900 mb-3 text-lg">📋 Posted Ad Details</h3>
+          <h3 className="font-bold text-gray-900 mb-3 text-lg">📋 Submitted Ad Details</h3>
           <div className="space-y-2 text-sm">
             {formData.title && (
               <div className="flex justify-between items-center py-2 border-b border-blue-200">
@@ -259,7 +192,6 @@ const SuccessPage = () => {
                 <span className="font-mono text-xs text-gray-500">{uploadedAdId}</span>
               </div>
             )}
-            {/* 🔥 NEW: Show current status */}
             <div className="flex justify-between items-center py-2">
               <span className="text-gray-600">Status:</span>
               <span className={`font-bold text-sm px-3 py-1 rounded-full ${
@@ -267,48 +199,11 @@ const SuccessPage = () => {
                 adStatus === 'Ai_Blocked' ? 'bg-red-100 text-red-700' :
                 'bg-yellow-100 text-yellow-700'
               }`}>
-                {adStatus === 'active' ? 'Active' : adStatus === 'Ai_Blocked' ? 'Blocked' : 'Pending'}
+                {adStatus === 'active' ? 'Active' : adStatus === 'Ai_Blocked' ? 'Blocked' : 'Pending Review'}
               </span>
             </div>
           </div>
         </div>
-
-        {/* Verification Status */}
-        {isPublished ? (
-          <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="text-3xl">✅</div>
-              <div>
-                <p className="font-bold text-green-900">Verification Complete</p>
-                <p className="text-sm text-green-700">Your content passed all safety checks</p>
-              </div>
-            </div>
-          </div>
-        ) : isBlocked ? (
-          <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="text-3xl">🚫</div>
-              <div>
-                <p className="font-bold text-red-900">AI Verification Failed</p>
-                <p className="text-sm text-red-700">
-                  {verificationResult?.message || "Content did not meet our safety standards"}
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="text-3xl">⚠️</div>
-              <div>
-                <p className="font-bold text-yellow-900">AI Verification: Manual Review Needed</p>
-                <p className="text-sm text-yellow-700">
-                  {verificationResult?.message || "Your ad requires human verification for quality assurance"}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* What's Next Section */}
         <div className="bg-gray-50 rounded-xl p-5 mb-6">
@@ -334,7 +229,7 @@ const SuccessPage = () => {
             <ul className="space-y-2 text-sm text-gray-700">
               <li className="flex items-start gap-2">
                 <span className="text-red-500 font-bold">✗</span>
-                <span>Review and edit your ad to comply with our guidelines</span>
+                <span>Review our community guidelines</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-red-500 font-bold">✗</span>
@@ -353,11 +248,11 @@ const SuccessPage = () => {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-orange-500 font-bold">⏳</span>
-                <span>Review typically takes 24-48 hours</span>
+                <span>Review typically takes 24 hours or less</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-orange-500 font-bold">⏳</span>
-                <span>You can view your pending ads in your dashboard</span>
+                <span>View your pending ads in your dashboard</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-orange-500 font-bold">⏳</span>
@@ -386,6 +281,14 @@ const SuccessPage = () => {
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3">
+          {isPending && (
+            <button
+              onClick={() => navigate("/my-ads")}
+              className="flex-1 px-6 py-4 bg-gradient-to-r from-orange-600 to-yellow-600 text-white rounded-xl hover:from-orange-700 hover:to-yellow-700 transition-all duration-200 shadow-lg hover:shadow-xl font-bold flex items-center justify-center gap-2"
+            >
+              <span>📋</span> View My Ads
+            </button>
+          )}
           {isPublished && uploadedAdId && (
             <button
               onClick={handleViewAd}
@@ -405,14 +308,6 @@ const SuccessPage = () => {
               <span>📝</span> Create New Ad
             </button>
           )}
-          {isPending && (
-            <button
-              onClick={() => navigate("/my-ads")}
-              className="flex-1 px-6 py-4 bg-gradient-to-r from-orange-600 to-yellow-600 text-white rounded-xl hover:from-orange-700 hover:to-yellow-700 transition-all duration-200 shadow-lg hover:shadow-xl font-bold flex items-center justify-center gap-2"
-            >
-              <span>📋</span> View Pending Ads
-            </button>
-          )}
           <button
             onClick={handleGoHome}
             className="flex-1 px-6 py-4 bg-white border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-200 font-bold flex items-center justify-center gap-2"
@@ -421,21 +316,11 @@ const SuccessPage = () => {
           </button>
         </div>
 
-        {/* Social Share Section (only show if published) */}
-        {isPublished && (
+        {/* Email Reminder */}
+        {isPending && (
           <div className="mt-6 pt-6 border-t border-gray-200 text-center">
-            <p className="text-sm text-gray-600 mb-3">Share your success!</p>
-            <div className="flex justify-center gap-3">
-              <button className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600 transition-colors">
-                📘
-              </button>
-              <button className="w-10 h-10 rounded-full bg-sky-500 text-white flex items-center justify-center hover:bg-sky-600 transition-colors">
-                🐦
-              </button>
-              <button className="w-10 h-10 rounded-full bg-green-500 text-white flex items-center justify-center hover:bg-green-600 transition-colors">
-                💬
-              </button>
-            </div>
+            <p className="text-sm text-gray-600 mb-2">📧 Check your email for updates</p>
+            <p className="text-xs text-gray-500">We'll notify you as soon as your ad is reviewed</p>
           </div>
         )}
       </div>

@@ -11,6 +11,7 @@ const initialState = {
     childCategory: "",
     language: "",
     tags: [],
+    accountType: "page",
 
     // Location
     location: {

@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
 import { useGetAdvertisementByIdQuery } from "../../features/postadsSlice";
-import { useVerifyItemMutation } from "../../features/AwsVerficationapislice";
-import { useCreateVerificationMutation } from "../../features/aiverificationoutputSlice";
 import { useUpdateAdvertisementStatusMutation } from "../../features/postadsSlice";
 
 const _VerificationForAds = ({ onBack, onNext }) => {
@@ -10,17 +8,13 @@ const _VerificationForAds = ({ onBack, onNext }) => {
   const accountType = useSelector((state) => state.adPost.accountType);
   const selectedPage = useSelector((state) => state.adPost.selectedPage);
   
-  const [verificationResult, setVerificationResult] = useState(null);
-  const [savingResult, setSavingResult] = useState(false);
   const [countdown, setCountdown] = useState(5);
-  const [autoRedirect, setAutoRedirect] = useState(false);
+  const [processingComplete, setProcessingComplete] = useState(false);
   
   const { data: advertisementData, error, isLoading, refetch } = useGetAdvertisementByIdQuery(
     uploadedAdId,
     { skip: !uploadedAdId }
   );
-  const [verifyItem, { isLoading: isVerifying }] = useVerifyItemMutation();
-  const [createVerification] = useCreateVerificationMutation();
   const [updateAdStatus] = useUpdateAdvertisementStatusMutation();
   
   const uploadedAd = advertisementData?.data || null;
@@ -35,163 +29,57 @@ const _VerificationForAds = ({ onBack, onNext }) => {
     }
   }, [accountType, selectedPage]);
 
-  // 🔥 UPDATED: Auto-run verification when ad data is available
+  // 🔥 UPDATED: Skip AI verification, set to manual review
   useEffect(() => {
-    const runVerification = async () => {
-      if (!uploadedAd) return;
-
-      const payload = {
-        image_url: uploadedAd.images?.[0]?.url || uploadedAd.images?.[0],
-        title: uploadedAd.title,
-        description: uploadedAd.description,
-        price: uploadedAd.price?.toString(),
-        category: uploadedAd.category?.name,
-        childCategory: uploadedAd.childCategory?.name,
-        language: uploadedAd.language?.code || "en",
-        specialQuestions: uploadedAd.specialQuestions 
-          ? Object.entries(uploadedAd.specialQuestions).map(([question, answer]) => ({
-              question,
-              answer
-            }))
-          : []
-      };
+    const submitForManualReview = async () => {
+      if (!uploadedAd || processingComplete) return;
 
       try {
-        // Step 1: Get verification from AWS Lambda
-        console.log("🔍 Starting AI verification...");
-        const result = await verifyItem(payload).unwrap();
-        console.log("✅ AWS Verification Result:", result);
+        console.log("⏳ Submitting ad for manual review (AI verification disabled)...");
         
-        setVerificationResult(result);
-
-        // Step 2: Save the verification result to database
-        setSavingResult(true);
-        try {
-          // 🔥 FIX: Properly handle null values from AWS Lambda response
-          const savePayload = {
-            ad_id: uploadedAdId,
-            success: result.success,
-            message: result.message,
-            image_check: result.image_check || {
-              passed: false,
-              checked_count: 0,
-              unsafe_count: 0,
-              results: []
-            },
-            text_check: {
-              passed: result.text_check?.passed ?? false,
-              is_safe: result.text_check?.is_safe ?? false,  // ✅ Convert null to false
-              is_relevant: result.text_check?.is_relevant ?? false,  // ✅ Convert null to false
-              issues: result.text_check?.issues || [],
-              reason: result.text_check?.reason || ""
-            }
-          };
-          
-          console.log("💾 Saving verification to DB:", savePayload);
-          
-          const savedResult = await createVerification(savePayload).unwrap();
-          console.log("✅ Verification saved to DB:", savedResult);
-          
-          // 🔥 Step 3: Update advertisement status based on verification result
-          const newStatus = result.success ? "active" : "Ai_Blocked";
-          console.log(`🔄 Updating ad status to: ${newStatus}`);
-          
-          try {
-            await updateAdStatus({
-              id: uploadedAdId,
-              status: newStatus,
-              verificationResult: result
-            }).unwrap();
-            
-            console.log(`✅ Ad status successfully updated to: ${newStatus}`);
-            
-            // Refetch the ad to get updated status
-            refetch();
-            
-          } catch (statusError) {
-            console.error("❌ Failed to update ad status:", statusError);
-            // Continue anyway - verification is saved, just status update failed
+        // Set status to "inactive" for manual review
+        await updateAdStatus({
+          id: uploadedAdId,
+          status: "inactive",
+          verificationResult: {
+            success: false,
+            message: "Ad submitted for manual review within 24 hours",
+            requiresManualReview: true
           }
-          
-          // Step 4: Start countdown for auto-redirect
-          setAutoRedirect(true);
-          
-        } catch (saveError) {
-          console.error("❌ Failed to save verification result:", saveError);
-          console.error("Error details:", saveError?.data || saveError);
-          
-          // 🔥 Even if saving failed, try to block the ad if verification failed
-          if (!result.success) {
-            try {
-              await updateAdStatus({
-                id: uploadedAdId,
-                status: "Ai_Blocked",
-                verificationResult: result
-              }).unwrap();
-              console.log("✅ Ad blocked despite save error");
-            } catch (statusError) {
-              console.error("❌ Failed to block ad:", statusError);
-            }
-          }
-          
-          // Still start countdown even if saving failed
-          setAutoRedirect(true);
-        } finally {
-          setSavingResult(false);
-        }
-
+        }).unwrap();
+        
+        console.log("✅ Ad submitted for manual review successfully");
+        
+        // Refetch to get updated status
+        refetch();
+        
+        // Mark processing as complete
+        setProcessingComplete(true);
+        
       } catch (err) {
-        console.error("❌ Verification error:", err);
+        console.error("❌ Error submitting for manual review:", err);
         
-        // Check if it's a CORS error
-        const isCorsError = err?.status === "FETCH_ERROR" || 
-                           err?.error?.includes("Failed to fetch") ||
-                           !err?.status;
-        
-        setVerificationResult({
-          success: false,
-          message: isCorsError 
-            ? "⚠️ CORS Error: Backend needs to enable CORS headers. The API works but browser blocks the request."
-            : err?.data?.message || err?.error || "Verification API failed",
-          isApiError: true,
-          isCorsError: isCorsError,
-          statusCode: err?.status || "CORS_ERROR"
-        });
-        
-        // 🔥 Block the ad when verification fails or has errors
-        try {
-          console.log("🚫 Blocking ad due to verification failure/error");
-          await updateAdStatus({
-            id: uploadedAdId,
-            status: "Ai_Blocked",
-            verificationResult: {
-              success: false,
-              error: err?.data?.message || err?.error || "Verification failed",
-              isCorsError
-            }
-          }).unwrap();
-          console.log("✅ Ad blocked due to verification error");
-        } catch (statusError) {
-          console.error("❌ Failed to block ad after verification error:", statusError);
-        }
-        
-        // Start countdown even on error
-        setAutoRedirect(true);
+        // Still mark as complete to allow user to proceed
+        setProcessingComplete(true);
       }
     };
 
-    runVerification();
-  }, [uploadedAd, verifyItem, createVerification, uploadedAdId, updateAdStatus, refetch]);
+    submitForManualReview();
+  }, [uploadedAd, processingComplete, uploadedAdId, updateAdStatus, refetch]);
 
   // Countdown timer and auto-redirect
   useEffect(() => {
-    if (!autoRedirect || countdown <= 0) return;
+    if (!processingComplete || countdown <= 0) {
+      if (countdown <= 0) {
+        onNext(); // Navigate to success page
+      }
+      return;
+    }
 
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          onNext(); // Navigate to success page
           return 0;
         }
         return prev - 1;
@@ -199,7 +87,7 @@ const _VerificationForAds = ({ onBack, onNext }) => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [autoRedirect, countdown, onNext]);
+  }, [processingComplete, countdown, onNext]);
 
   const steps = [
     { number: 1, label: "Ad Details" },
@@ -208,15 +96,16 @@ const _VerificationForAds = ({ onBack, onNext }) => {
     { number: 4, label: "Published" }
   ];
 
-  if (isLoading || isVerifying || savingResult) {
+  if (isLoading || !processingComplete) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-700 text-lg font-semibold">
-            {savingResult ? "💾 Saving verification result..." : 
-             isVerifying ? "🔍 Verifying your advertisement..." : 
-             "Loading ad data..."}
+            Submitting your ad for review...
+          </p>
+          <p className="text-gray-500 text-sm mt-2">
+            This will only take a moment
           </p>
         </div>
       </div>
@@ -246,7 +135,7 @@ const _VerificationForAds = ({ onBack, onNext }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-gray-50 py-8 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-red-50 py-8 px-4">
       <div className="max-w-6xl mx-auto">
         {/* Progress Steps */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
@@ -255,16 +144,16 @@ const _VerificationForAds = ({ onBack, onNext }) => {
               <React.Fragment key={step.number}>
                 <div className="flex flex-col items-center flex-1">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
-                    step.active ? 'bg-blue-600 text-white' : step.number < 3 ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+                    step.active ? 'bg-orange-600 text-white' : step.number < 3 ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
                   }`}>
                     {step.number < 3 ? '✓' : step.number}
                   </div>
-                  <span className={`mt-2 text-sm font-semibold ${step.active ? 'text-blue-600' : step.number < 3 ? 'text-green-500' : 'text-gray-500'}`}>
+                  <span className={`mt-2 text-sm font-semibold ${step.active ? 'text-orange-600' : step.number < 3 ? 'text-green-500' : 'text-gray-500'}`}>
                     {step.label}
                   </span>
                 </div>
                 {idx < steps.length - 1 && (
-                  <div className={`h-1 flex-1 mx-2 rounded ${step.number < 3 ? 'bg-green-500' : step.active ? 'bg-blue-600' : 'bg-gray-200'}`} style={{ marginTop: '-20px' }} />
+                  <div className={`h-1 flex-1 mx-2 rounded ${step.number < 3 ? 'bg-green-500' : step.active ? 'bg-orange-600' : 'bg-gray-200'}`} style={{ marginTop: '-20px' }} />
                 )}
               </React.Fragment>
             ))}
@@ -273,7 +162,7 @@ const _VerificationForAds = ({ onBack, onNext }) => {
 
         {/* Account Type Display */}
         {accountType && (
-          <div className="bg-white rounded-2xl shadow-lg p-6 mb-6 border-2 border-blue-200">
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-6 border-2 border-orange-200">
             <div className="flex items-center gap-4">
               <div className="text-5xl">
                 {accountType === 'page' ? '📄' : '👤'}
@@ -283,14 +172,14 @@ const _VerificationForAds = ({ onBack, onNext }) => {
                   Posting As
                 </h3>
                 <div className="flex items-center gap-3">
-                  <p className="text-xl font-bold text-blue-600">
+                  <p className="text-xl font-bold text-orange-600">
                     {accountType === 'page' 
                       ? (selectedPage?.pagename || selectedPage?.title || selectedPage?.name || 'Page')
                       : 'Personal Account'}
                   </p>
                   {accountType === 'page' && selectedPage && (
                     <div className="flex items-center gap-2">
-                      <span className="px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 rounded-full text-sm font-semibold">
+                      <span className="px-3 py-1 bg-gradient-to-r from-orange-100 to-yellow-100 text-orange-700 rounded-full text-sm font-semibold">
                         {selectedPage.category?.name || 'Page'}
                       </span>
                       <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
@@ -306,133 +195,73 @@ const _VerificationForAds = ({ onBack, onNext }) => {
                     </div>
                   )}
                 </div>
-                {accountType === 'page' && (
-                  <p className="text-sm text-gray-600 mt-1">
-                    This advertisement will be published under your page
-                  </p>
-                )}
-                {accountType === 'user' && (
-                  <p className="text-sm text-gray-600 mt-1">
-                    This advertisement will be published from your personal account
-                  </p>
-                )}
               </div>
             </div>
           </div>
         )}
 
-        {/* 🔥 Status Display */}
-        {uploadedAd && (
-          <div className={`rounded-xl p-4 mb-6 border-2 ${
-            uploadedAd.status === 'active' 
-              ? 'bg-green-50 border-green-300' 
-              : uploadedAd.status === 'Ai_Blocked'
-              ? 'bg-red-50 border-red-300'
-              : 'bg-yellow-50 border-yellow-300'
-          }`}>
-            <div className="flex items-center gap-3">
-              <div className="text-2xl">
-                {uploadedAd.status === 'active' ? '✅' : uploadedAd.status === 'Ai_Blocked' ? '🚫' : '⏳'}
-              </div>
-              <div>
-                <p className="font-bold text-sm">Current Status:</p>
-                <p className={`text-lg font-bold ${
-                  uploadedAd.status === 'active' 
-                    ? 'text-green-700' 
-                    : uploadedAd.status === 'Ai_Blocked'
-                    ? 'text-red-700'
-                    : 'text-yellow-700'
-                }`}>
-                  {uploadedAd.status === 'active' ? 'Active' : uploadedAd.status === 'Ai_Blocked' ? 'AI Blocked' : 'Inactive'}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Verification Result Alert with Countdown */}
-        {verificationResult && (
-          <div className={`rounded-xl p-6 mb-6 shadow-md border-2 ${
-            verificationResult.success 
-              ? 'bg-green-50 border-green-200' 
-              : 'bg-red-50 border-red-200'
-          }`}>
-            <div className="flex items-start gap-4">
-              <div className="text-5xl">{verificationResult.success ? '✅' : '❌'}</div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className={`font-bold text-2xl ${verificationResult.success ? 'text-green-900' : 'text-red-900'}`}>
-                    {verificationResult.success ? 'Verification Passed!' : 'Verification Failed'}
-                  </h3>
-                  {autoRedirect && (
-                    <div className="bg-white px-4 py-2 rounded-lg shadow-sm border-2 border-blue-500 animate-pulse">
-                      <p className="text-blue-700 font-bold text-sm">Redirecting in {countdown}s</p>
-                    </div>
-                  )}
-                </div>
-                
-                <p className={`text-base mb-4 ${verificationResult.success ? 'text-green-700' : 'text-red-700'}`}>
-                  {verificationResult.message}
-                </p>
-
-                {/* Display detailed checks */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {verificationResult.image_check && (
-                    <div className="bg-white rounded-lg p-4 border-2 border-gray-200">
-                      <p className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                        📸 Image Check
-                        <span className={`px-2 py-1 rounded text-xs ${verificationResult.image_check.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {verificationResult.image_check.passed ? 'PASSED' : 'FAILED'}
-                        </span>
-                      </p>
-                      <p className="text-xs text-gray-600">
-                        {verificationResult.image_check.checked_count} image(s) checked
-                        {verificationResult.image_check.unsafe_count > 0 && (
-                          <span className="text-red-600 font-bold"> • {verificationResult.image_check.unsafe_count} unsafe</span>
-                        )}
-                      </p>
-                    </div>
-                  )}
-
-                  {verificationResult.text_check && (
-                    <div className="bg-white rounded-lg p-4 border-2 border-gray-200">
-                      <p className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                        📝 Text Check
-                        <span className={`px-2 py-1 rounded text-xs ${verificationResult.text_check.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {verificationResult.text_check.passed ? 'PASSED' : 'FAILED'}
-                        </span>
-                      </p>
-                      {verificationResult.text_check.issues && verificationResult.text_check.issues.length > 0 && (
-                        <ul className="mt-2 space-y-1">
-                          {verificationResult.text_check.issues.map((issue, idx) => (
-                            <li key={idx} className="text-xs text-red-600 flex items-start">
-                              <span className="mr-1">•</span>
-                              <span>{issue}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {verificationResult.isApiError && (
-                  <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <p className="text-sm text-yellow-900 font-semibold mb-2 flex items-center gap-2">
-                      🔧 Technical Details
-                    </p>
-                    <ul className="text-xs text-yellow-800 space-y-1 ml-4 list-disc">
-                      <li>Error Status: <code className="bg-yellow-100 px-2 py-1 rounded">{verificationResult.statusCode}</code></li>
-                      {verificationResult.isCorsError && (
-                        <>
-                          <li>The API endpoint exists and works in Postman</li>
-                          <li>Browser is blocking due to missing CORS headers</li>
-                          <li><strong>Fix:</strong> Add CORS headers in AWS Lambda response & enable CORS in API Gateway</li>
-                        </>
-                      )}
-                    </ul>
+        {/* Manual Review Notice */}
+        <div className="bg-gradient-to-br from-orange-50 to-yellow-50 rounded-xl p-8 mb-6 shadow-md border-2 border-orange-200">
+          <div className="flex items-start gap-4">
+            <div className="text-6xl">⏳</div>
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-3xl text-orange-900">
+                  Manual Review Required
+                </h3>
+                {processingComplete && (
+                  <div className="bg-white px-4 py-2 rounded-lg shadow-sm border-2 border-orange-500 animate-pulse">
+                    <p className="text-orange-700 font-bold text-sm">Redirecting in {countdown}s</p>
                   </div>
                 )}
+              </div>
+              
+              <p className="text-lg mb-4 text-orange-800">
+                Your ad has been submitted for manual review by our team
+              </p>
+
+              <div className="bg-white rounded-lg p-6 border-2 border-orange-200 space-y-4">
+                <div>
+                  <p className="font-semibold text-gray-900 mb-3 text-lg">What happens next?</p>
+                  <ul className="space-y-3 text-sm text-gray-700">
+                    <li className="flex items-start gap-3">
+                      <span className="text-orange-500 font-bold text-lg">1.</span>
+                      <span>Our team will manually review your ad within <strong className="text-orange-700">24 hours</strong></span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="text-orange-500 font-bold text-lg">2.</span>
+                      <span>If your ad complies with our policies, it will be published automatically</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="text-orange-500 font-bold text-lg">3.</span>
+                      <span>If there are issues, we'll contact you via email with feedback</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="text-orange-500 font-bold text-lg">4.</span>
+                      <span>You'll receive a notification once the review is complete</span>
+                    </li>
+                  </ul>
+                </div>
+                
+                <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                  <p className="text-sm text-orange-800 italic flex items-start gap-2">
+                    <span className="text-xl">💡</span>
+                    <span><strong>Note:</strong> We've temporarily disabled automated AI verification. All ads are being manually reviewed to ensure the highest quality standards.</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Status Display */}
+        {uploadedAd && (
+          <div className="bg-yellow-50 rounded-xl p-4 mb-6 border-2 border-yellow-300">
+            <div className="flex items-center gap-3">
+              <div className="text-3xl">⏳</div>
+              <div>
+                <p className="font-bold text-sm text-yellow-800">Current Status:</p>
+                <p className="text-lg font-bold text-yellow-700">Pending Manual Review</p>
               </div>
             </div>
           </div>
@@ -448,7 +277,7 @@ const _VerificationForAds = ({ onBack, onNext }) => {
                 <h3 className="text-xl font-bold text-gray-900 mb-4">📸 Images ({uploadedAd.images.length})</h3>
                 <div className="grid grid-cols-3 gap-4">
                   {uploadedAd.images.map((img, idx) => (
-                    <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-600 transition-all group">
+                    <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-orange-600 transition-all group">
                       <img src={img.url || img} alt={`Ad ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
                       <div className="absolute top-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-bold">#{idx + 1}</div>
                     </div>
@@ -539,10 +368,10 @@ const _VerificationForAds = ({ onBack, onNext }) => {
             </button>
             <button 
               onClick={onNext} 
-              className="px-8 py-3 bg-gradient-to-r from-green-600 to-blue-600 text-white font-bold rounded-xl hover:from-green-700 hover:to-blue-700 shadow-lg hover:shadow-xl transition-all flex items-center gap-2"
+              className="px-8 py-3 bg-gradient-to-r from-orange-600 to-yellow-600 text-white font-bold rounded-xl hover:from-orange-700 hover:to-yellow-700 shadow-lg hover:shadow-xl transition-all flex items-center gap-2"
             >
               Continue to Results
-              {autoRedirect && <span className="bg-white/20 px-2 py-1 rounded">({countdown}s)</span>}
+              {processingComplete && <span className="bg-white/20 px-2 py-1 rounded">({countdown}s)</span>}
               →
             </button>
           </div>
@@ -553,4 +382,3 @@ const _VerificationForAds = ({ onBack, onNext }) => {
 };
 
 export default _VerificationForAds;
-

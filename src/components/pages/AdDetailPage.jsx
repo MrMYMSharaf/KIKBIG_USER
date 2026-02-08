@@ -263,18 +263,19 @@ useEffect(() => {
     }
   };
 
-  const handleChatWithSeller = () => {
-    navigate('/groups', { 
-      state: { 
-        selectedUser: {
-          _id: listing.userId?._id,
-          name: listing.userId?.name || "Anonymous",
-          email: listing.userId?.email,
-          pageTitle: listing.title
-        }
-      }
-    });
-  };
+ const handleChatWithSeller = () => {
+  navigate('/groups', { 
+    state: { 
+      selectedUser: {
+        _id: listing.userId?._id, // ✅ Use USER ID
+        name: listing.userId?.name || "Anonymous",
+        email: listing.userId?.email,
+        accountType: "user", // ✅ Mark as user
+      },
+      type: 'user' // ✅ Mark as user chat
+    }
+  });
+};
 
   const handleShare = () => {
     if (navigator.share) {

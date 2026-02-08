@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {ArrowLeft,MapPin,Phone,Globe,Share2,Heart,Flag,Users,Star,Edit3,Trash2,Camera,Send,Tag,Store,FileText,Award,Crown,Gem,Image as ImageIcon,AlertCircle,MessageCircle} from 'lucide-react';
-import { useGetPageByIdQuery, useDeletePageMutation } from '../../features/pageApiSlice';
+import { useSelector } from 'react-redux';
+import {ArrowLeft,MapPin,Phone,Globe,Share2,Heart,Flag,Users,Star,Edit3,Trash2,Camera,Send,Tag,Store,FileText,Award,Crown,Gem,Image as ImageIcon,AlertCircle,MessageCircle,ShoppingBag,Gift,Eye,MoreVertical} from 'lucide-react';
 import { useIsFollowingPageQuery, useFollowPageMutation, useUnfollowPageMutation } from '../../features/page.flowwingSlice';
 import { useGetPageReviewsQuery, useGetUserReviewForPageQuery, useCreateOrUpdateReviewMutation, useDeleteReviewMutation } from '../../features/pageReviewApiSlice';
-import { useSelector } from 'react-redux';
+import { useGetPageByIdQuery, useDeletePageMutation, useIncrementViewsMutation } from '../../features/pageApiSlice';
+import { useGetAdvertisementsByPageIdQuery } from '../../features/postadsSlice';
 
 // Icon mapping for page types
 const PAGE_TYPE_ICONS = {
@@ -22,19 +23,31 @@ const getPageTypeIcon = (pageTypeName) => {
 const PageDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-
   const country = useSelector((state) => state.country?.country);
 
   // Fetch page data
   const { data: pageData, isLoading, error, refetch } = useGetPageByIdQuery(id);
   const [deletePage] = useDeletePageMutation();
-  
+  const [incrementViews] = useIncrementViewsMutation();
+
+  // ✅ Fetch page advertisements
+  const { data: adsData, isLoading: adsLoading } = useGetAdvertisementsByPageIdQuery(
+    { pageId: id, page: 1, limit: 100 },
+    { skip: !id }
+  );
+
+  useEffect(() => {
+    if (id) {
+      incrementViews(id);
+    }
+  }, [id, incrementViews]);
+
   // Follow/Unfollow functionality
   const { data: followingStatus, isLoading: followStatusLoading, refetch: refetchFollowStatus } = useIsFollowingPageQuery(
     { pageId: id },
     { skip: !id }
   );
-  
+
   const [followPage, { isLoading: following }] = useFollowPageMutation();
   const [unfollowPage, { isLoading: unfollowing }] = useUnfollowPageMutation();
 
@@ -43,7 +56,7 @@ const PageDetail = () => {
     { pageId: id, page: 1, limit: 20 },
     { skip: !id }
   );
-  
+
   const { data: userReviewData } = useGetUserReviewForPageQuery(
     { pageId: id },
     { skip: !id }
@@ -51,12 +64,13 @@ const PageDetail = () => {
 
   const [createOrUpdateReview, { isLoading: submittingReview }] = useCreateOrUpdateReviewMutation();
   const [deleteReview] = useDeleteReviewMutation();
-  
+
   const [activeTab, setActiveTab] = useState('About');
   const [showShareModal, setShowShareModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
-  
+  const [selectedAd, setSelectedAd] = useState(null);
+
   // Review form state
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
@@ -66,7 +80,7 @@ const PageDetail = () => {
   const isFollowing = followingStatus?.isFollowing || false;
   const isFollowActionLoading = following || unfollowing;
   const isOwner = page?.isOwner || false;
-  
+
   // Review data
   const reviews = reviewsData?.reviews || [];
   const reviewStats = reviewsData?.stats || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
@@ -74,33 +88,34 @@ const PageDetail = () => {
   const userReview = userReviewData?.review;
   const hasUserReview = userReviewData?.hasReview || false;
 
-  // Replace the handleMessageOwner function in your PageDetail component with this:
+  // Advertisement data
+  const advertisements = adsData?.categorized?.advertisements || [];
+  const needs = adsData?.categorized?.needs || [];
+  const offers = adsData?.categorized?.offers || [];
+  const adCounts = adsData?.counts || { advertisements: 0, needs: 0, offers: 0 };
 
-// Add this to your PageDetail component
-
-const handleMessageOwner = () => {
-  if (!page?.userId?._id && !page?.userId) {
-    alert('Unable to message page owner');
-    return;
-  }
-  
-  // Get the page owner's ID
-  const ownerId = page.userId?._id || page.userId;
-  
-  // Navigate to groups/messages page with state containing the selected user
-  navigate('/groups', {
-    state: {
-      selectedUser: {
-        _id: ownerId,
-        name: page.userId?.name || 'Unknown User',
-        email: page.userId?.email || page.contact?.email,
-        phone: page.userId?.phone || page.contact?.phone,
-        pageTitle: page.title, // ✅ This is the page title that should show in chat
-      },
-      type: 'individual' // ✅ Important: include the type
+  const handleMessageOwner = () => {
+    if (!page?.userId?._id && !page?.userId) {
+      alert('Unable to message page owner');
+      return;
     }
-  });
-};
+
+    navigate('/groups', {
+      state: {
+        selectedUser: {
+          _id: page._id,
+          name: page.title,
+          accountType: "page",
+          pageTitle: page.title,
+        },
+        type: 'page'
+      }
+    });
+  };
+
+  const handleAdClick = (adId) => {
+    navigate(`/AdDetailPage/${adId}`);
+  };
 
   // Open review modal (pre-fill if editing)
   const openReviewModal = () => {
@@ -217,6 +232,44 @@ const handleMessageOwner = () => {
   const currentPageTypeIcon = page?.pagetype ? getPageTypeIcon(page.pagetype.name) : null;
   const PageTypeIconComponent = currentPageTypeIcon?.icon;
 
+  // Render advertisement card
+  const renderAdCard = (ad) => (
+    <div
+      key={ad._id}
+      className="bg-white rounded-xl shadow-lg overflow-hidden transform transition hover:scale-105 hover:shadow-xl cursor-pointer"
+      onClick={() => handleAdClick(ad._id)}
+    >
+      <div className="relative">
+        <img
+          src={ad.images?.[0] || "https://via.placeholder.com/300x200"}
+          alt={ad.title}
+          className="w-full h-48 object-cover"
+        />
+        <div className="absolute bottom-4 left-4">
+          <span className="bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
+            {ad.typeofads}
+          </span>
+        </div>
+      </div>
+      <div className="p-4">
+        <h3 className="text-lg font-bold mb-2 line-clamp-2">{ad.title}</h3>
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-xl font-semibold text-blue-600">
+            {ad.price ? `Rs. ${ad.price.toLocaleString()}` : "N/A"}
+          </span>
+        </div>
+        <div className="mt-3 flex justify-between text-gray-500 text-xs">
+          <span>
+            {ad.createdAt ? new Date(ad.createdAt).toLocaleDateString() : "N/A"}
+          </span>
+          <span className="flex items-center">
+            <Eye className="w-4 h-4 mr-1" /> {ad.views || 0}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+
   // Loading state
   if (isLoading) {
     return (
@@ -232,7 +285,7 @@ const handleMessageOwner = () => {
       </div>
     );
   }
-  
+
   // Error state
   if (error || !page) {
     return (
@@ -245,7 +298,7 @@ const handleMessageOwner = () => {
             <ArrowLeft className="w-5 h-5 mr-2" />
             Back to Pages
           </button>
-          
+
           <div className="flex justify-center items-center h-96">
             <div className="text-center">
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -276,15 +329,15 @@ const handleMessageOwner = () => {
 
         {/* Page Preview */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
-          
+
           {/* Cover Image Section */}
           <div className="relative">
             {page.cover_image ? (
               <div className="relative h-64 group">
-                <img 
-                  src={page.cover_image} 
-                  alt="Cover" 
-                  className="w-full h-full object-cover" 
+                <img
+                  src={page.cover_image}
+                  alt="Cover"
+                  className="w-full h-full object-cover"
                 />
                 {isOwner && (
                   <div className="absolute top-4 right-4 flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -319,10 +372,10 @@ const handleMessageOwner = () => {
               <div className="relative">
                 {page.logo_image ? (
                   <div className="w-32 h-32 rounded-full border-4 border-white bg-white overflow-hidden shadow-lg">
-                    <img 
-                      src={page.logo_image} 
-                      alt="Logo" 
-                      className="w-full h-full object-cover" 
+                    <img
+                      src={page.logo_image}
+                      alt="Logo"
+                      className="w-full h-full object-cover"
                     />
                   </div>
                 ) : (
@@ -374,7 +427,6 @@ const handleMessageOwner = () => {
 
                   {/* Action Buttons */}
                   <div className="flex items-center gap-2 ml-auto flex-wrap">
-                    {/* ✅ Message Button (only for non-owners) */}
                     {!isOwner && (
                       <button
                         onClick={handleMessageOwner}
@@ -386,7 +438,6 @@ const handleMessageOwner = () => {
                       </button>
                     )}
 
-                    {/* Follow Button */}
                     {!isOwner && (
                       <button
                         onClick={handleFollow}
@@ -398,15 +449,14 @@ const handleMessageOwner = () => {
                         }`}
                       >
                         <Heart className={`w-5 h-5 ${isFollowing ? 'fill-current text-red-500' : ''}`} />
-                        {isFollowActionLoading 
-                          ? 'Loading...' 
-                          : isFollowing 
-                            ? 'Following' 
+                        {isFollowActionLoading
+                          ? 'Loading...'
+                          : isFollowing
+                            ? 'Following'
                             : 'Follow'}
                       </button>
                     )}
-                    
-                    {/* Share Button */}
+
                     <button
                       onClick={handleShare}
                       className="flex items-center gap-2 px-4 py-2.5 bg-[#00008F]/10 text-[#00008F] rounded-lg hover:bg-[#00008F]/20 transition-colors shadow-sm"
@@ -435,19 +485,34 @@ const handleMessageOwner = () => {
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`px-6 py-3 text-sm font-semibold rounded-lg whitespace-nowrap transition-colors ${
+                    className={`px-6 py-3 text-sm font-semibold rounded-lg whitespace-nowrap transition-colors relative ${
                       activeTab === tab
                         ? 'bg-[#00008F] text-white'
                         : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     {tab}
+                    {/* Show counts for ad-related tabs */}
+                    {tab === 'Advertisement' && adCounts.advertisements > 0 && (
+                      <span className="ml-2 bg-white text-[#00008F] px-2 py-0.5 rounded-full text-xs">
+                        {adCounts.advertisements}
+                      </span>
+                    )}
+                    {tab === 'Need' && adCounts.needs > 0 && (
+                      <span className="ml-2 bg-white text-[#00008F] px-2 py-0.5 rounded-full text-xs">
+                        {adCounts.needs}
+                      </span>
+                    )}
+                    {tab === 'Offer' && adCounts.offers > 0 && (
+                      <span className="ml-2 bg-white text-[#00008F] px-2 py-0.5 rounded-full text-xs">
+                        {adCounts.offers}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Tab Content - Keeping all the existing sections */}
             {/* About Section */}
             {activeTab === 'About' && (
               <div className="mt-6 space-y-6">
@@ -482,19 +547,19 @@ const handleMessageOwner = () => {
                   <div className="space-y-2 text-sm text-gray-600">
                     {page.category?.name && (
                       <p className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">Category:</span> 
+                        <span className="font-medium text-gray-900">Category:</span>
                         {page.category.name}
                       </p>
                     )}
                     {page.childCategory?.name && (
                       <p className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">Subcategory:</span> 
+                        <span className="font-medium text-gray-900">Subcategory:</span>
                         {page.childCategory.name}
                       </p>
                     )}
                     {page.language?.name && (
                       <p className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">Language:</span> 
+                        <span className="font-medium text-gray-900">Language:</span>
                         {page.language.name}
                       </p>
                     )}
@@ -508,8 +573,7 @@ const handleMessageOwner = () => {
               <div className="mt-6 space-y-6">
                 <div>
                   <h3 className="text-lg font-bold text-gray-900 mb-4">Contact Information</h3>
-                  
-                  {/* ✅ Message Button in Contact Tab */}
+
                   {!isOwner && (
                     <button
                       onClick={handleMessageOwner}
@@ -524,7 +588,7 @@ const handleMessageOwner = () => {
                       </div>
                     </button>
                   )}
-                  
+
                   <div className="space-y-3">
                     {page.contact?.phone && (
                       <a
@@ -595,7 +659,7 @@ const handleMessageOwner = () => {
                 {/* Social Media */}
                 <div>
                   <h3 className="text-lg font-bold text-gray-900 mb-4">Social Media</h3>
-                  
+
                   <div className="space-y-3">
                     {page.social?.website && (
                       <a
@@ -678,8 +742,8 @@ const handleMessageOwner = () => {
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {page.images.map((img, index) => (
                       <div key={index} className="aspect-square rounded-lg overflow-hidden border border-gray-200">
-                        <img 
-                          src={img} 
+                        <img
+                          src={img}
                           alt={`Gallery ${index + 1}`}
                           className="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
                         />
@@ -701,13 +765,26 @@ const handleMessageOwner = () => {
               <div className="mt-6 space-y-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-bold text-gray-900">Advertisements</h3>
+                  <span className="text-sm text-gray-600">
+                    {adCounts.advertisements} {adCounts.advertisements === 1 ? 'ad' : 'ads'}
+                  </span>
                 </div>
 
-                <div className="text-center py-16 bg-white border-2 border-dashed border-gray-300 rounded-lg">
-                  <ImageIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-600 font-semibold mb-2">No advertisements yet</p>
-                  <p className="text-gray-400 text-sm">This page has no active advertisements</p>
-                </div>
+                {adsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="w-8 h-8 border-4 border-[#00008F] border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  </div>
+                ) : advertisements.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                    {advertisements.map(renderAdCard)}
+                  </div>
+                ) : (
+                  <div className="text-center py-16 bg-white border-2 border-dashed border-gray-300 rounded-lg">
+                    <ShoppingBag className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-600 font-semibold mb-2">No advertisements yet</p>
+                    <p className="text-gray-400 text-sm">This page has no active advertisements</p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -716,13 +793,26 @@ const handleMessageOwner = () => {
               <div className="mt-6 space-y-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-bold text-gray-900">Needs</h3>
+                  <span className="text-sm text-gray-600">
+                    {adCounts.needs} {adCounts.needs === 1 ? 'need' : 'needs'}
+                  </span>
                 </div>
 
-                <div className="text-center py-16 bg-white border-2 border-dashed border-gray-300 rounded-lg">
-                  <AlertCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-600 font-semibold mb-2">No needs posted yet</p>
-                  <p className="text-gray-400 text-sm">This page has no active needs</p>
-                </div>
+                {adsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="w-8 h-8 border-4 border-[#00008F] border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  </div>
+                ) : needs.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                    {needs.map(renderAdCard)}
+                  </div>
+                ) : (
+                  <div className="text-center py-16 bg-white border-2 border-dashed border-gray-300 rounded-lg">
+                    <AlertCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-600 font-semibold mb-2">No needs posted yet</p>
+                    <p className="text-gray-400 text-sm">This page has no active needs</p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -731,23 +821,36 @@ const handleMessageOwner = () => {
               <div className="mt-6 space-y-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-bold text-gray-900">Offers</h3>
+                  <span className="text-sm text-gray-600">
+                    {adCounts.offers} {adCounts.offers === 1 ? 'offer' : 'offers'}
+                  </span>
                 </div>
 
-                <div className="text-center py-16 bg-white border-2 border-dashed border-gray-300 rounded-lg">
-                  <Tag className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-600 font-semibold mb-2">No offers available</p>
-                  <p className="text-gray-400 text-sm">This page has no active offers</p>
-                </div>
+                {adsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="w-8 h-8 border-4 border-[#00008F] border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  </div>
+                ) : offers.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                    {offers.map(renderAdCard)}
+                  </div>
+                ) : (
+                  <div className="text-center py-16 bg-white border-2 border-dashed border-gray-300 rounded-lg">
+                    <Gift className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-600 font-semibold mb-2">No offers available</p>
+                    <p className="text-gray-400 text-sm">This page has no active offers</p>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Reviews Section - keeping all existing review code */}
+            {/* Reviews Section */}
             {activeTab === 'Reviews' && (
               <div className="mt-6 space-y-6">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-bold text-gray-900">Ratings & Reviews</h3>
                   {!isOwner && (
-                    <button 
+                    <button
                       onClick={openReviewModal}
                       className="text-[#00008F] text-sm font-semibold hover:underline"
                     >
@@ -820,7 +923,7 @@ const handleMessageOwner = () => {
                       {[5, 4, 3, 2, 1].map((rating) => {
                         const count = reviewStats[rating] || 0;
                         const percentage = reviews.length ? (count / reviews.length) * 100 : 0;
-                        
+
                         return (
                           <div key={rating} className="flex items-center gap-3 mb-2">
                             <span className="text-xs text-gray-600 w-8">{rating} ★</span>
@@ -898,7 +1001,7 @@ const handleMessageOwner = () => {
             <h3 className="text-2xl font-bold text-gray-900 mb-6">
               {hasUserReview ? 'Edit Your Review' : 'Write a Review'}
             </h3>
-            
+
             {/* Star Rating */}
             <div className="mb-6">
               <label className="block text-sm font-bold text-gray-900 mb-3">
