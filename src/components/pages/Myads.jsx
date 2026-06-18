@@ -1,31 +1,9 @@
 import React, { useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useSelector } from "react-redux";
-import {
-  MoreVertical,
-  Edit,
-  Trash2,
-  Eye,
-  PlusCircle,
-  Filter,
-  Search,
-  ShoppingBag,
-  Heart,
-  Gift,
-  ChevronLeft,
-  ChevronRight,
-  SlidersHorizontal,
-  TrendingUp,
-  Clock,
-  DollarSign,
-  Calendar,
-  X,
-} from "lucide-react";
+import {MoreVertical,Edit,Trash2,Eye,PlusCircle,Filter,Search,ShoppingBag,Heart,Gift,ChevronLeft,ChevronRight,SlidersHorizontal,TrendingUp,Clock,DollarSign,Calendar,X,} from "lucide-react";
 import Swal from "sweetalert2";
-import {
-  useGetMyAdvertisementsQuery,
-  useDeleteAdvertisementMutation,
-} from "../../features/postadsSlice";
+import {useGetMyAdvertisementsQuery,useDeleteAdvertisementMutation,} from "../../features/postadsSlice";
 import { useGetCurrentUserQuery } from "../../features/authSlice";
 import PostAdsModal from '../PostAdsModalFlow/PostAdsModal';
 
@@ -50,6 +28,11 @@ const Myads = () => {
 
   const openPostAdsModal = () => setPostAdsModalOpen(true);
   const closePostAdsModal = () => setPostAdsModalOpen(false);
+
+  // Reset to page 1 when filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, statusFilter, searchTerm, sortBy, priceRange, dateRange]);
 
   if (!isAuthenticated && !authLoading) {
     return <Navigate to="/auth" replace />;
@@ -294,10 +277,7 @@ const Myads = () => {
   const endIndex = startIndex + itemsPerPage;
   const currentAds = filteredAds.slice(startIndex, endIndex);
 
-  // Reset to page 1 when filters change
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab, statusFilter, searchTerm, sortBy, priceRange, dateRange]);
+  
 
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);

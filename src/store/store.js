@@ -22,6 +22,7 @@ import{pageFollowingApiSlice} from "../features/page.flowwingSlice";
 import {pageReviewApiSlice} from "../features/pageReviewApiSlice.js";
 import {imagePriceApi} from "../features/imagePriceSlice.js";
 import {AddTocartApi} from "../features/AddTocartSlice.js"
+import {bannerApi} from "../features/bannerSlice.js";
 import addToCartReducer from "../features/redux/addTocardredux";
 
 // Reducers
@@ -98,6 +99,7 @@ export const store = configureStore({
     [AddTocartApi.reducerPath]:AddTocartApi.reducer,
     // Other reducers
     [searchApi.reducerPath]: searchApi.reducer,
+    [bannerApi.reducerPath]: bannerApi.reducer,
 
     // Persisted reducers
     auth: persistedAuthReducer,
@@ -135,6 +137,7 @@ export const store = configureStore({
       imagePriceApi.middleware,
       AddTocartApi.middleware,
       searchApi.middleware,
+      bannerApi.middleware,
     ),
 });
 

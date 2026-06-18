@@ -1,38 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Star } from 'lucide-react';
+// components/shared/card/OfferSlider.jsx
 
-const offerData = [
-  {
-    title: 'Summer Mega Sale',
-    description: 'Get up to 50% off on selected items!',
-    discount: '50%',
-    imageUrl: 'https://www.shutterstock.com/image-vector/summer-mega-sale-background-abstract-260nw-1347161726.jpg'  // Using placeholder for demo
-  },
-  {
-    title: 'Holiday Special',
-    description: 'Exclusive deals for the festive season',
-    discount: '40%',
-    imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTZA6y82WSrBBbxRR3ToQDSJMy_xOWKyKRxhg&s'
-  },
-  {
-    title: 'New Arrivals Bonanza',
-    description: 'Fresh collections with amazing discounts',
-    discount: '30%',
-    imageUrl: 'https://global.bonanzasatrangi.com/cdn/shop/collections/new-arrivals_1_d4c146bd-4a1a-4907-b9cb-7881392d803a.jpg?v=1604457494'
-  },
-  {
-    title: 'Clearance Sale',
-    description: 'Crazy deals you cant miss!',
-    discount: '60%',
-    imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7n-xJ77CjWHJiOa228EhB4IDmCL3ntJSA5w&s'
-  },
-  {
-    title: 'Weekend Specials',
-    description: 'Limited time offers just for you',
-    discount: '25%',
-    imageUrl: 'https://d1csarkz8obe9u.cloudfront.net/posterpreviews/weekend-specials-restaurant-menu-design-template-94e91e288d3d04052cab5fbaced9f0f5_screen.jpg?ts=1585796702'
-  }
-];
+import React, { useState, useEffect, useRef } from "react";
+import { ChevronLeft, ChevronRight, Star } from "lucide-react";
+import { useActiveBannersQuery } from "../../../features/bannerSlice";
 
 const OfferSlider = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -40,56 +10,122 @@ const OfferSlider = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const intervalRef = useRef(null);
 
+  // Fetch active banners using RTK Query
+  const { data, isLoading, isError, error } = useActiveBannersQuery();
+
+  const banners = data?.data || [];
+
   const handleNext = () => {
-    if (!isTransitioning) {
+    if (!isTransitioning && banners.length > 0) {
       setIsTransitioning(true);
-      setCurrentIndex((prevIndex) => (prevIndex + 1) % offerData.length);
-      setTimeout(() => setIsTransitioning(false), 100);
+      setCurrentIndex((prevIndex) => (prevIndex + 1) % banners.length);
+      setTimeout(() => setIsTransitioning(false), 50);
     }
   };
 
   const handlePrev = () => {
+    if (!isTransitioning && banners.length > 0) {
+      setIsTransitioning(true);
+      setCurrentIndex(
+        (prevIndex) => (prevIndex - 1 + banners.length) % banners.length
+      );
+      setTimeout(() => setIsTransitioning(false), 50);
+    }
+  };
+
+  const handleDotClick = (index) => {
     if (!isTransitioning) {
       setIsTransitioning(true);
-      setCurrentIndex((prevIndex) => (prevIndex - 1 + offerData.length) % offerData.length);
+      setCurrentIndex(index);
       setTimeout(() => setIsTransitioning(false), 100);
     }
   };
 
+  // Auto-play effect - changes slide every 0.1 second
   useEffect(() => {
-    if (!isHovered) {
-      intervalRef.current = setInterval(handleNext, 1000); // Increased interval for better readability
+    if (!isHovered && banners.length > 0) {
+      intervalRef.current = setInterval(handleNext, 100); // 0.1 second interval
     }
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isHovered]);
+  }, [isHovered, banners.length, currentIndex]);
 
-  const getSlideStyle = (offer) => {
-    const isActive = offer === offerData[currentIndex];
+  // Reset currentIndex if it's out of bounds
+  useEffect(() => {
+    if (currentIndex >= banners.length && banners.length > 0) {
+      setCurrentIndex(0);
+    }
+  }, [banners.length, currentIndex]);
+
+  const getSlideStyle = (index) => {
+    const isActive = index === currentIndex;
     return {
       opacity: isActive ? 1 : 0,
-      transition: 'opacity 0.4s ease-in-out',
-      position: 'absolute',
+      transition: "opacity 0.1s ease-in-out",
+      position: "absolute",
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundImage: `linear-gradient(rgba(255, 255, 255, 0.1), rgba(0, 0, 0, 0.2)), 
-                       url(${offer.imageUrl})`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'flex-end',
-      padding: '2rem',
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "flex-end",
+      padding: "2rem",
     };
   };
 
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="relative w-full py-12 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="rounded-2xl shadow-lg overflow-hidden relative h-[500px] bg-white flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+              <p className="mt-4 text-gray-600">Loading offers...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (isError) {
+    return (
+      <div className="relative w-full py-12 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="rounded-2xl shadow-lg overflow-hidden relative h-[500px] bg-white flex items-center justify-center">
+            <div className="text-center text-red-600">
+              <p>Failed to load offers. Please try again later.</p>
+              {error && <p className="text-sm mt-2">{error?.message || 'Unknown error'}</p>}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Empty state
+  if (banners.length === 0) {
+    return (
+      <div className="relative w-full py-12 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="rounded-2xl shadow-lg overflow-hidden relative h-[500px] bg-white flex items-center justify-center">
+            <div className="text-center text-gray-600">
+              <p>No active offers available at the moment.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div 
+    <div
       className="relative w-full py-12 bg-gradient-to-r from-blue-50 to-indigo-50"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -97,71 +133,91 @@ const OfferSlider = () => {
       <div className="max-w-6xl mx-auto px-4">
         <div className="relative group">
           <div className="rounded-2xl shadow-lg overflow-hidden relative h-[500px] bg-white">
-            {offerData.map((offer, index) => (
+            {banners.map((banner, index) => (
               <div
-                key={index}
-                style={getSlideStyle(offer)}
+                key={banner._id}
+                style={getSlideStyle(index)}
                 className="rounded-2xl"
               >
-                <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 max-w-xl shadow-lg">
+                {/* Background Image */}
+                <div className="absolute inset-0 z-0">
+                  <img
+                    src={banner.image}
+                    alt={banner.title}
+                    className="w-full h-full object-cover"
+                    loading={index === 0 ? "eager" : "lazy"}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+                </div>
+
+                {/* Content */}
+                <div className="relative z-10 bg-white/90 backdrop-blur-sm rounded-xl p-6 max-w-xl shadow-lg">
                   <div className="flex items-center mb-2">
-                    <Star className="w-6 h-6 text-yellow-500 mr-2" fill="currentColor" />
+                    <Star
+                      className="w-6 h-6 text-yellow-500 mr-2"
+                      fill="currentColor"
+                    />
                     <h2 className="text-3xl font-bold tracking-tight text-gray-800">
-                      {offer.title}
+                      {banner.title}
                     </h2>
                   </div>
                   <p className="text-xl mb-4 text-gray-600">
-                    {offer.description}
+                    {banner.description}
                   </p>
                   <div className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white px-6 py-3 rounded-full inline-block text-lg font-bold shadow-md">
-                    Up to {offer.discount} Off
+                    Up to {banner.discount} Off
                   </div>
                 </div>
               </div>
             ))}
           </div>
 
-          <button 
-            onClick={handlePrev}
-            disabled={isTransitioning}
-            className="absolute left-4 top-1/2 -translate-y-1/2 z-10 
-              bg-white hover:bg-gray-50 
-              rounded-full p-3 shadow-lg transition-all duration-300 
-              opacity-0 group-hover:opacity-100 disabled:opacity-50"
-          >
-            <ChevronLeft className="text-gray-800 w-8 h-8" />
-          </button>
-          
-          <button 
-            onClick={handleNext}
-            disabled={isTransitioning}
-            className="absolute right-4 top-1/2 -translate-y-1/2 z-10 
-              bg-white hover:bg-gray-50
-              rounded-full p-3 shadow-lg transition-all duration-300 
-              opacity-0 group-hover:opacity-100 disabled:opacity-50"
-          >
-            <ChevronRight className="text-gray-800 w-8 h-8" />
-          </button>
-
-          <div className="flex justify-center mt-4 space-x-2">
-            {offerData.map((_, index) => (
+          {/* Navigation Buttons */}
+          {banners.length > 1 && (
+            <>
               <button
-                key={index}
-                onClick={() => {
-                  if (!isTransitioning) {
-                    setIsTransitioning(true);
-                    setCurrentIndex(index);
-                    setTimeout(() => setIsTransitioning(false), 400);
-                  }
-                }}
+                onClick={handlePrev}
                 disabled={isTransitioning}
-                className={`h-3 rounded-full transition-all duration-300 
-                  ${index === currentIndex 
-                    ? 'bg-blue-500 w-8' 
-                    : 'bg-blue-200 w-3 hover:bg-blue-300'}`}
-              />
-            ))}
-          </div>
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-10 
+                  bg-white hover:bg-gray-50 
+                  rounded-full p-3 shadow-lg transition-all duration-300 
+                  opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                aria-label="Previous offer"
+              >
+                <ChevronLeft className="text-gray-800 w-8 h-8" />
+              </button>
+
+              <button
+                onClick={handleNext}
+                disabled={isTransitioning}
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 
+                  bg-white hover:bg-gray-50
+                  rounded-full p-3 shadow-lg transition-all duration-300 
+                  opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                aria-label="Next offer"
+              >
+                <ChevronRight className="text-gray-800 w-8 h-8" />
+              </button>
+
+              {/* Dots Indicator */}
+              <div className="flex justify-center mt-4 space-x-2">
+                {banners.map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleDotClick(index)}
+                    disabled={isTransitioning}
+                    className={`h-3 rounded-full transition-all duration-300 
+                      ${
+                        index === currentIndex
+                          ? "bg-blue-500 w-8"
+                          : "bg-blue-200 w-3 hover:bg-blue-300"
+                      }`}
+                    aria-label={`Go to offer ${index + 1}`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

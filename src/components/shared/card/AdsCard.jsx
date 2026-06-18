@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import DOMPurify from "dompurify";
-import { Heart, ShoppingCart } from "lucide-react";
+import { ShoppingCart } from "lucide-react";
 import { useSelector } from "react-redux";
 import Swal from "sweetalert2";
 import getDisplayImage from "../../../functions/getDisplayImage";
@@ -54,32 +54,6 @@ const AdsCard = ({
   const shortDescription =
     cleanHTML.length > 100 ? cleanHTML.slice(0, 100) + "..." : cleanHTML;
 
-  // ✅ Handle favorite/heart click with proper event stopping
-  const handleFavoriteClick = (e) => {
-    e.preventDefault();
-    e.stopPropagation(); // 🔥 Prevent card navigation
-    
-    // TODO: Implement favorites feature
-    console.log('Favorite clicked for ad:', id);
-    
-    // Optional: Show login prompt if not authenticated
-    if (!isAuthenticated) {
-      Swal.fire({
-        title: 'Login Required',
-        text: 'Please login to add items to your favorites',
-        icon: 'info',
-        showCancelButton: true,
-        confirmButtonColor: '#3B82F6',
-        cancelButtonColor: '#6B7280',
-        confirmButtonText: 'Login Now',
-        cancelButtonText: 'Cancel'
-      }).then((result) => {
-        if (result.isConfirmed) {
-          navigate('/auth');
-        }
-      });
-    }
-  };
 
   // ✅ Handle cart click with proper event stopping
   const handleCartClick = (e) => {
@@ -121,15 +95,6 @@ const AdsCard = ({
         <div className="relative">
           <img className={imgClass} src={finalImage} alt={title} />
           
-          {/* ✅ Heart icon - ALWAYS visible, stops propagation */}
-          <button 
-            onClick={handleFavoriteClick}
-            className="absolute top-2 left-2 bg-white bg-opacity-90 text-gray-700 rounded-full p-2 hover:text-red-500 hover:bg-white transition-all shadow-sm z-10"
-            title="Add to favorites"
-            aria-label="Add to favorites"
-          >
-            <Heart size={18} />
-          </button>
 
           {/* ✅ SHOPPING CART icon - ONLY visible when logged in, stops propagation */}
           {isAuthenticated && (
